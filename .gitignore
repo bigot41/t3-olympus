@@ -1,0 +1,9 @@
+# your own setup, never published
+config.json
+gods.json
+cards.json
+cards.json.tmp
+handoffs/
+local/
+launch-error.txt
+__pycache__/

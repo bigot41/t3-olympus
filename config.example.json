@@ -1,0 +1,16 @@
+{
+  "projects_dir": "~/Projects",
+  "profiles_dir": "~/Projects/_profiles",
+  "default_profile": "general",
+  "buttons_show_in": "all",
+  "folders": {
+    "my-website": "marketing",
+    "game-": "gamedev"
+  },
+  "topics": {
+    "Quarterly budget review": "finance"
+  },
+  "archive": [
+    "\\Temp\\"
+  ]
+}
