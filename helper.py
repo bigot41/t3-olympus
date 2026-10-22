@@ -100,6 +100,27 @@ def send_to_cloud(thread):
     return {"title": title}
 
 
+def wrap_up_card(thread):
+    """The chat's latest wrap_up call, if nothing has been said since it; else {}."""
+    try:
+        sid = session_for(thread)[0]
+    except ValueError:
+        return {}
+    card = {}
+    with open(glob.glob(os.path.join(HOME, ".claude", "projects", "*", sid + ".jsonl"))[0], encoding="utf-8") as f:
+        for line in f:
+            entry = json.loads(line)
+            content = (entry.get("message") or {}).get("content")
+            if entry.get("type") == "user" and (isinstance(content, str) or any(
+                    b.get("type") == "text" for b in content or [])):
+                card = {}  # you replied, so the old card is answered
+            elif entry.get("type") == "assistant" and isinstance(content, list):
+                for b in content:
+                    if b.get("type") == "tool_use" and b.get("name", "").endswith("__wrap_up"):
+                        card = {"id": b["id"], **b.get("input", {})}
+    return card
+
+
 def gods():
     if not os.path.exists(GODS):
         return {}
@@ -162,6 +183,8 @@ class Handler(BaseHTTPRequestHandler):
             return self.reply(200, {"show_in": CONFIG.get("buttons_show_in", "all")})
         if self.path == "/gods":
             return self.reply(200, gods())
+        if self.path.startswith("/wrapup?thread="):
+            return self.reply(200, wrap_up_card(urllib.parse.unquote(self.path.split("=", 1)[1])))
         if self.path.startswith("/card?name="):
             return self.reply(200, hover_card(urllib.parse.unquote(self.path.split("=", 1)[1])))
         self.reply(404, {"error": "not found"})

@@ -15,6 +15,7 @@ Each profile is a T3 project with its own instructions, and opening a chat in it
 - **Continue elsewhere.** Keeps the same Claude conversation running in the background with Remote Control, so you can pick it up in Claude desktop, claude.ai or the Claude phone app.
 - **Send to cloud.** Claude writes a handoff note from the chat, then starts a Claude Code cloud session with it.
 - **Profile cards.** Rest the mouse on a profile in the sidebar for a moment and a card shows what that profile works on, its folders and its latest chats. Haiku writes the summary, and only re-reads a profile when its chats change.
+- **Next-step card.** Claude ends a turn with a recap and answer buttons above the message box, as in Claude desktop.
 - **Chat sorting.** Chats T3 imports from Claude Code land in one project per folder. T3 Olympus files them into your profiles by rules you set.
 - **Survives T3 updates.** Open T3 from the **T3 Olympus** shortcut and it puts everything back if an update removed it.
 
@@ -89,6 +90,16 @@ Open a chat and press **Ctrl+Shift+B**. The tray in the top right has a **Hand o
 - **Continue elsewhere** runs `claude --bg --resume <session> --remote-control`. It's the same conversation with the same history, now running in the background, and a pop-up gives you its claude.ai link. Carry on there rather than in the T3 chat, or the two copies drift apart. Pressing it again reuses the same background session. Stop it with `claude stop <id>`.
 - **Send to cloud** opens a terminal. Claude writes a handoff note from a copy of the chat (saved in `handoffs/`), then runs `claude --cloud` with it. A cloud session can't see your computer, so anything it needs has to be in the note or on GitHub. The first time, Claude Code may show its one-time setup screen in that terminal: finish it and the cloud session starts.
 
+## The next-step card
+
+Like Claude desktop, Claude can end a turn with a short recap and, when the next move is yours, one question with one or two answer buttons. The card sits just above the message box; a button sends its reply for you, and × hides it. It goes away once you reply.
+
+It comes from a small tool, `wrap_up` (`wrapup_mcp.py`), which the installer and `new_profile.py` turn on for each profile. To turn it on for any other folder:
+
+```bash
+python wrapup_mcp.py --register "C:/path/to/folder"
+```
+
 ## Getting around T3
 
 | Keys | What it does |
@@ -114,9 +125,10 @@ T3 serves its interface from `resources/server.asar`. `patch.py` marks the inter
 | `install.py` | One-time setup: themes, config files, shortcuts, Startup entry; `--uninstall` |
 | `launch.pyw` | What the shortcut runs: re-patch if needed, sort chats, start the helper, open T3 |
 | `patch.py` | Adds T3 Olympus to T3, or `--restore` takes it out |
-| `olympus.js`, `cards.js` | The code that runs inside T3 |
+| `olympus.js`, `cards.js`, `nextstep.js` | The code that runs inside T3 |
 | `helper.py` | Local helper for the buttons, god picks and cards |
 | `send_to_cloud.py` | Handoff note, then `claude --cloud` |
+| `wrapup_mcp.py`, `nextstep.js` | The next-step card: the `wrap_up` tool, and the card in T3 |
 | `cards_build.py` | Writes the profile cards (`python cards_build.py` rebuilds them all) |
 | `new_profile.py` | Makes a profile: folder, T3 project, god |
 | `organize.py` | Sorts chats into profiles |

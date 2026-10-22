@@ -1,8 +1,9 @@
 """Set up T3 Olympus: the 18 god themes, your config files, the "T3 Olympus" shortcut,
-and a Startup entry that runs the buttons helper when you sign in to Windows.
+a Startup entry that runs the buttons helper when you sign in to Windows,
+and the next-step card in each profile.
 
     python install.py              install (safe to run again: never overwrites config.json or gods.json)
-    python install.py --uninstall  remove the shortcuts, the Startup entry and the themes
+    python install.py --uninstall  remove the shortcuts, the Startup entry, the themes and the next-step card
 """
 import pathlib, shutil, subprocess, sys
 
@@ -23,7 +24,11 @@ if "--uninstall" in sys.argv:
                          f"(Join-Path ([Environment]::GetFolderPath('{d}')) '{n}')" for d, n, _ in SHORTCUTS))
     for theme in THEMES.glob("pantheon-*.json"):
         theme.unlink()
-    print("removed the shortcuts, the Startup entry and the themes.")
+    import organize
+    for folder in pathlib.Path(organize.PROFILES).glob("*"):
+        if folder.is_dir():
+            subprocess.run(["claude", "mcp", "remove", "-s", "local", "olympus"], cwd=folder, capture_output=True)
+    print("removed the shortcuts, the Startup entry, the themes and the next-step card.")
     print("Close T3, then run: python patch.py --restore")
     sys.exit()
 
@@ -50,4 +55,9 @@ $s.IconLocation = '{T3},0'
 $s.Save()""" for d, n, script in SHORTCUTS))
 print('added the "T3 Olympus" shortcut to the Start Menu and Desktop')
 print("added the helper to Startup, so the buttons work however T3 is opened")
+
+# the next-step card (wrapup_mcp.py) in every profile folder that exists now; new_profile.py adds it to new ones
+import organize, wrapup_mcp
+for folder in sorted(p for p in pathlib.Path(organize.PROFILES).glob("*") if p.is_dir()):
+    wrapup_mcp.register(folder)
 print("Close T3, then open it from the T3 Olympus shortcut.")

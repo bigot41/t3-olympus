@@ -1,4 +1,4 @@
-"""Make a new profile in one step: its folder and CLAUDE.md, the T3 project, and its god.
+"""Make a new profile in one step: its folder and CLAUDE.md, the T3 project, its god and next-step card.
 
     python new_profile.py <name> [god] [--agent]
 
@@ -8,6 +8,7 @@
 The profile shows up in T3's sidebar with its god the next time T3 opens from the shortcut.
 """
 import json, os, pathlib, shutil, subprocess, sys
+import wrapup_mcp
 from organize import PROFILES
 
 HERE = pathlib.Path(__file__).resolve().parent
@@ -34,6 +35,7 @@ t3 = HOME / ".t3" / "bin" / "t3.cmd"
 r = subprocess.run(["cmd", "/c", str(t3), "project", "add", "--title", title, folder.as_posix()],
                    capture_output=True, text=True)
 print(f"added {title} to T3" if r.returncode == 0 else f"T3 didn't add the project: {(r.stderr or r.stdout).strip()}")
+wrapup_mcp.register(folder)
 
 if god:
     gods = json.loads(GODS.read_text(encoding="utf-8")) if GODS.exists() else {}
