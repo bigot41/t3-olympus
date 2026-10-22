@@ -107,7 +107,7 @@ def files():
     gods = (HERE / "gods.json").read_text(encoding="utf-8") if (HERE / "gods.json").exists() else "{}"
     gods = json.dumps(json.loads(gods))
     js = ((HERE / "olympus.js").read_text(encoding="utf-8").replace("/*GODS*/ {}", gods)
-          + "\n" + (HERE / "cards.js").read_text(encoding="utf-8"))
+          + "".join("\n" + (HERE / f).read_text(encoding="utf-8") for f in ("cards.js", "nextstep.js", "panel.js")))
     return {"index.html": html, "olympus.css": BASE + "".join(theme_css(g) for g in GODS), "olympus.js": js}
 
 
