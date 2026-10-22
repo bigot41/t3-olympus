@@ -100,14 +100,22 @@ def send_to_cloud(thread):
     return {"title": title}
 
 
+wrap_up_cache = {}  # transcript -> ((mtime, size), card)
+
+
 def wrap_up_card(thread):
     """The chat's latest wrap_up call, if nothing has been said since it; else {}."""
     try:
         sid = session_for(thread)[0]
     except ValueError:
         return {}
+    path = glob.glob(os.path.join(HOME, ".claude", "projects", "*", sid + ".jsonl"))[0]
+    st = os.stat(path)
+    key = (st.st_mtime_ns, st.st_size)
+    if path in wrap_up_cache and wrap_up_cache[path][0] == key:  # polled every 2 s: only re-read on change
+        return wrap_up_cache[path][1]
     card = {}
-    with open(glob.glob(os.path.join(HOME, ".claude", "projects", "*", sid + ".jsonl"))[0], encoding="utf-8") as f:
+    with open(path, encoding="utf-8") as f:
         for line in f:
             entry = json.loads(line)
             content = (entry.get("message") or {}).get("content")
@@ -118,6 +126,7 @@ def wrap_up_card(thread):
                 for b in content:
                     if b.get("type") == "tool_use" and b.get("name", "").endswith("__wrap_up"):
                         card = {"id": b["id"], **b.get("input", {})}
+    wrap_up_cache[path] = (key, card)
     return card
 
 
@@ -301,7 +310,37 @@ def running():
         return s.connect_ex(("127.0.0.1", PORT)) == 0
 
 
+STAMP = os.path.join(HERE, "local", "helper.json")  # the running helper's code version
+CODE = ("helper.py", "voice.py", "temporary.py", "organize.py", "cards_build.py")
+
+
 if __name__ == "__main__":
+    version = max(os.path.getmtime(os.path.join(HERE, f)) for f in CODE)
     if running():
-        sys.exit(0)
+        # one copy at a time, but a copy started before T3 Olympus was updated is replaced,
+        # or new features would wait for the next reboot
+        try:
+            with open(STAMP, encoding="utf-8") as f:
+                old = json.load(f)
+        except (OSError, ValueError):
+            old = {}
+        if old.get("version") == version:
+            sys.exit(0)
+        # the process listening on the helper's port (also covers a copy older than the stamp file)
+        listen = subprocess.run(["netstat", "-ano", "-p", "TCP"], capture_output=True, text=True,
+                                creationflags=NO_WINDOW).stdout
+        pid = next((line.split()[-1] for line in listen.splitlines()
+                    if f"127.0.0.1:{PORT}" in line and "LISTENING" in line), None)
+        if not pid or not pid.isdigit():
+            sys.exit(0)
+        subprocess.run(["taskkill", "/PID", pid, "/F"], capture_output=True, creationflags=NO_WINDOW)
+        for _ in range(30):
+            if not running():
+                break
+            time.sleep(0.1)
+        else:
+            sys.exit(0)
+    os.makedirs(os.path.dirname(STAMP), exist_ok=True)
+    with open(STAMP, "w", encoding="utf-8") as f:
+        json.dump({"version": version}, f)
     ThreadingHTTPServer(("127.0.0.1", PORT), Handler).serve_forever()

@@ -42,7 +42,7 @@ git clone https://github.com/bigot41/t3-olympus.git
 python t3-olympus/install.py
 ```
 
-The installer copies the 18 themes into T3, creates `config.json` and `gods.json` from the examples, and adds a **T3 Olympus** shortcut to the Start Menu and Desktop. It also puts the helper in your Startup folder, so the buttons and cards work even when T3 opens some other way, such as after an in-app update. Close T3, then open it from that shortcut. From now on, always open T3 that way.
+The installer copies the 18 themes into T3, creates `config.json` and `gods.json` from the examples, and adds a **T3 Olympus** shortcut to the Start Menu and Desktop. It also puts the helper in your Startup folder, so the buttons and cards work even when T3 opens some other way, such as after an in-app update. A helper started from older T3 Olympus code is replaced by the current one the next time the shortcut runs. Close T3, then open it from that shortcut. From now on, always open T3 that way.
 
 ## Set up your profiles
 

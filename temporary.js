@@ -3,7 +3,7 @@
 // picker, and deleted with T3's own delete command when you leave it. Chats left behind by a crash
 // or by closing T3 are deleted the next time T3 opens.
 (() => {
-  const HELPER = "http://127.0.0.1:47833";
+  const { HELPER } = olympus;
   const TITLE = "Temporary";
   const post = (path, body) => fetch(HELPER + path, { method: "POST", headers: { "Content-Type": "application/json" },
                                                       body: JSON.stringify(body) }).then((r) => r.json());
@@ -178,7 +178,11 @@
   if (window === top) setTimeout(async () => {
     try {
       const { threads } = await (await fetch(HELPER + "/temporary")).json();
-      for (const t of threads) if (t !== route().thread) remove(t);
+      // chats on screen are kept: the main chat and the split pane's (split.js keeps its route)
+      let pane = null;
+      try { pane = sessionStorage.getItem("olympus:split"); } catch { /* none */ }
+      const open = new Set([route().thread, pane && decodeURIComponent(pane.split("/").pop())]);
+      for (const t of threads) if (!open.has(t)) remove(t);
     } catch { /* helper not running */ }
   }, 3000);
 })();

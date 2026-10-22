@@ -76,6 +76,7 @@ class Socket:
 
     def recv(self):
         """The next text message, or None when the stream closes."""
+        parts = []  # a message can arrive in pieces: a text frame, then continuation frames
         while True:
             b1, b2 = self._read(2)
             n = b2 & 0x7F
@@ -90,8 +91,10 @@ class Socket:
             if op == 0x9:  # ping
                 with self.lock:
                     self.s.sendall(bytes([0x8A, 0x80]) + os.urandom(4))
-            elif op == 0x1:
-                return data.decode("utf-8", "replace")
+            elif op == 0x1 or (op == 0x0 and parts):
+                parts.append(data)
+                if b1 & 0x80:  # the last piece
+                    return b"".join(parts).decode("utf-8", "replace")
 
     def close(self):
         try:

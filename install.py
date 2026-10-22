@@ -3,7 +3,7 @@ a Startup entry that runs the buttons helper when you sign in to Windows,
 and the next-step card in each profile.
 
     python install.py              install (safe to run again: never overwrites config.json or gods.json)
-    python install.py --uninstall  remove the shortcuts, the Startup entry, the themes and the next-step card
+    python install.py --uninstall  remove the shortcuts, the Startup entry, the themes, the next-step card and the Temporary project
 """
 import pathlib, shutil, subprocess, sys
 
@@ -28,7 +28,12 @@ if "--uninstall" in sys.argv:
     for folder in pathlib.Path(organize.PROFILES).glob("*"):
         if folder.is_dir():
             subprocess.run(["claude", "mcp", "remove", "-s", "local", "olympus"], cwd=folder, capture_output=True)
-    print("removed the shortcuts, the Startup entry, the themes and the next-step card.")
+    import temporary  # the hidden Temporary project and its folder
+    if temporary.project_id():
+        subprocess.run(["cmd", "/c", str(pathlib.Path.home() / ".t3/bin/t3.cmd"), "project", "remove",
+                        temporary.DIR.replace("\\", "/")], capture_output=True)
+    shutil.rmtree(temporary.DIR, ignore_errors=True)
+    print("removed the shortcuts, the Startup entry, the themes, the next-step card and the Temporary project.")
     print("Close T3, then run: python patch.py --restore")
     sys.exit()
 

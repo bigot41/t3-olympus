@@ -2,7 +2,7 @@
 // words appear as you speak, and the text lands in the message box when you stop (click again or
 // press Esc). It uses Claude Code's own speech-to-text service through helper.py (voice.py).
 (() => {
-  const HELPER = "http://127.0.0.1:47833";
+  const { HELPER, esc } = olympus;
   const style = document.createElement("style");
   style.textContent = `
 #olympus-mic.on { border-radius: 50%; color: var(--primary-foreground, HighlightText); background: var(--primary, Highlight);
@@ -30,7 +30,6 @@
     olympusAbove(el);
     el.innerHTML = html;
   };
-  const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
 
   const start = async () => {
     try {

@@ -2,8 +2,7 @@
 // wrap_up tool (wrapup_mcp.py), helper.py's /wrapup returns that call and this draws its recap,
 // question and buttons. A button types its message into the composer and sends it.
 (() => {
-  const HELPER = "http://127.0.0.1:47833";
-  const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+  const { HELPER, esc, threadId } = olympus;
   const style = document.createElement("style");
   style.textContent = `
 #olympus-next { order: 1; padding: 10px 14px; font-size: 13px; line-height: 1.5; border-radius: 8px;
@@ -17,11 +16,6 @@
 #olympus-next [data-close] { float: right; border: 0; padding: 0 2px; opacity: .6; }`;
   document.head.append(style);
 
-  const threadId = () => {
-    const parts = location.hash.replace(/^#\/?/, "").split(/[?#]/)[0].split("/");
-    if (parts.length !== 2 || ["draft", "settings", "pull-requests", "new"].includes(parts[0])) return null;
-    return decodeURIComponent(parts[1]);
-  };
 
   // Put text in T3's message box and send it, the way typing and pressing Enter would.
   const send = (text) => {

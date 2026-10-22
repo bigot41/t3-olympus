@@ -2,10 +2,10 @@
 // work, folders and latest chats. Each hover asks helper.py for that profile's
 // card, rebuilt then (cards_build.py); Haiku only re-reads a profile whose chats changed.
 (() => {
+  const { esc } = olympus;
   const seen = {};  // last card per profile, shown while the fresh one loads
   const loaded = {};  // whether this hover's fresh card has arrived
   let hovered = null;
-  const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
   const list = (items) => "<ul>" + (items || []).map((i) => `<li>${esc(i)}</li>`).join("") + "</ul>";
 
   const style = document.createElement("style");
