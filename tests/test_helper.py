@@ -84,7 +84,9 @@ class TurnCalls(unittest.TestCase):
         self.assertEqual(helper.turn_calls(os.path.join(self.tmp.name, "nope.jsonl")), [])
 
     def test_turn_endpoint_never_throws(self):
-        with mock.patch.object(helper, "session_for", side_effect=ValueError("no session")):
+        with mock.patch.object(helper.temporary, "session_of", return_value=None):
+            self.assertEqual(helper.turn_state("x"), {"items": [], "run": None})
+        with mock.patch.object(helper.temporary, "session_of", return_value="s1"),              mock.patch.object(helper, "transcript", return_value=None):
             self.assertEqual(helper.turn_state("x"), {"items": [], "run": None})
 
 

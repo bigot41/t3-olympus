@@ -29,6 +29,19 @@ PYTHON = sys.executable.replace("pythonw.exe", "python.exe")  # a console python
 NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 
 
+transcripts = {}  # session id -> its transcript path (a glob over every project folder otherwise)
+
+
+def transcript(sid):
+    """The Claude Code transcript file for a session, or None."""
+    if sid not in transcripts or not os.path.exists(transcripts[sid]):
+        files = glob.glob(os.path.join(HOME, ".claude", "projects", "*", sid + ".jsonl"))
+        if not files:
+            return None
+        transcripts[sid] = files[0]
+    return transcripts[sid]
+
+
 def session_for(thread):
     """(session id, folder it ran in, title) for a T3 thread, or raise ValueError."""
     con = sqlite3.connect(f"file:{DB}?mode=ro", uri=True)
@@ -45,10 +58,10 @@ def session_for(thread):
     if ref.get("driver") != "claudeAgent" or not ref.get("nativeId"):
         raise ValueError("Only Claude chats can be continued elsewhere.")
     sid = ref["nativeId"]
-    files = glob.glob(os.path.join(HOME, ".claude", "projects", "*", sid + ".jsonl"))
-    if not files:
+    path = transcript(sid)
+    if not path:
         raise ValueError(f"Can't find the Claude Code transcript for session {sid}.")
-    with open(files[0], encoding="utf-8") as f:
+    with open(path, encoding="utf-8") as f:
         cwd = next((c for c in (json.loads(line).get("cwd") for line in f) if c), None)
     if not cwd or not os.path.isdir(cwd):
         raise ValueError(f"The folder this chat ran in is gone: {cwd}")
@@ -139,18 +152,19 @@ def turn_calls(path):
                             "input": b.get("input") or {}, "status": "completed"}
                     calls[b["id"]] = item
                     items.append(item)
+    turn_cache.pop(path, None)
     turn_cache[path] = (offset + end, items, calls)
+    while len(turn_cache) > 50:  # keep the chats opened most recently
+        turn_cache.pop(next(iter(turn_cache)))
     return items
 
 
 def turn_state(thread):
     """GET /turn: a chat's turn items from its transcript; empty when there is no session or file."""
-    try:
-        sid = session_for(thread)[0]
-        path = glob.glob(os.path.join(HOME, ".claude", "projects", "*", sid + ".jsonl"))[0]
-    except (ValueError, IndexError, OSError):
-        return {"items": [], "run": None}
-    return {"items": turn_calls(path), "run": None}
+    # only the session's transcript is needed, not the folder session_for also checks
+    sid = temporary.session_of(thread)
+    path = sid and transcript(sid)
+    return {"items": turn_calls(path) if path else [], "run": None}
 
 
 connectors_cache = {}  # folder -> (time, list), since claude mcp list takes a few seconds

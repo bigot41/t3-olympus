@@ -1,18 +1,20 @@
 // Wraps T3's WebSocket (path /ws) and re-fires thread events on window as "olympus:thread"
-// with detail {threadId, kind: "item" | "run" | "snapshot", payload}. Inlined into index.html
-// by patch.py before T3's own script, so it runs first.
+// with detail {threadId, kind: "item" | "run", payload}. Inlined into index.html by patch.py
+// before T3's own script, so it runs first.
 (() => {
+  // a frame's messages: T3 sends one message or an array, as text or bytes
+  const messages = (data) => {
+    const parsed = JSON.parse(typeof data === "string" ? data : new TextDecoder().decode(data));
+    return Array.isArray(parsed) ? parsed : [parsed];
+  };
   const parseFrame = (data, subs) => {
     try {
-      const text = typeof data === "string" ? data : new TextDecoder().decode(data);
-      const parsed = JSON.parse(text);
       const out = [];
-      for (const m of Array.isArray(parsed) ? parsed : [parsed]) {
+      for (const m of messages(data)) {
         if (!m || m._tag !== "Chunk") continue;
         const sub = subs.get(String(m.requestId));
         for (const v of m.values || []) {
-          if (v.kind === "snapshot" && sub) out.push({ threadId: sub, kind: "snapshot", payload: v.projection });
-          else if (v.kind === "event" && v.event) {
+          if (v.kind === "event" && v.event) {
             const e = v.event;
             // a chat's own subscription, or another one whose event names its chat (a brand-new
             // chat's first run updates arrive on T3's wider subscription, before its own starts)
@@ -34,9 +36,7 @@
   const subs = new Map();  // request id -> thread id, from orchestration.subscribeThread
   const noteSend = (data) => {
     try {
-      const text = typeof data === "string" ? data : new TextDecoder().decode(data);
-      const parsed = JSON.parse(text);
-      for (const m of Array.isArray(parsed) ? parsed : [parsed])
+      for (const m of messages(data))
         if (m && m._tag === "Request" && m.tag === "orchestration.subscribeThread") subs.set(String(m.id), m.payload.threadId);
     } catch { /* not ours to handle */ }
   };

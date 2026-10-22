@@ -54,7 +54,8 @@
     });
     if (args.items != null) {
       if (!SCOPES.includes(args.scope)) return steps;
-      return parseSteps(args.items).length ? parseSteps(args.items) : steps;
+      const parsed = parseSteps(args.items);
+      return parsed.length ? parsed : steps;
     }
     if (!hasUpdate || !steps || !steps.length) return steps;
     const n = steps.length, start = args.start;

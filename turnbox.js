@@ -30,18 +30,23 @@
 #olympus-turn [data-close] { float: right; border: 0; padding: 0 2px; opacity: .6; }`;
   document.head.append(style);
 
-  // per chat: its turn items (by id, ordered by T3's ordinal) and the latest run
+  // per chat: the items the card needs (olympus calls and your messages, by id, in T3's order),
+  // the latest run, and a version that goes up with every change, so draw() redoes nothing otherwise
   const chats = new Map();
-  const chat = (id) => { if (!chats.has(id)) chats.set(id, { items: new Map(), run: null, asked: false }); return chats.get(id); };
-  const ordered = (c) => [...c.items.values()].sort((a, b) => (a.ordinal ?? 0) - (b.ordinal ?? 0));
+  const chat = (id) => { if (!chats.has(id)) chats.set(id, { items: new Map(), run: null, asked: false, version: 0 }); return chats.get(id); };
+  const ordered = (c) => [...c.items.values()].sort((a, b) => a.ordinal - b.ordinal);
+  const keep = (it) => it.type === "user_message" || /__(update_plan|wrap_up)$/.test(it.toolName || "");
+  const slim = ({ id, ordinal = 0, type, toolName, input, status }) => ({ id, ordinal, type, toolName, input, status });
   const dismissed = new Set();  // box ids closed with ×
 
   addEventListener("olympus:thread", (e) => {
     const { threadId: id, kind, payload } = e.detail || {};
     if (!id || !payload) return;
     const c = chat(id);
-    if (kind === "item" && payload.id) c.items.set(payload.id, payload);
+    if (kind === "item" && payload.id && keep(payload)) c.items.set(payload.id, slim(payload));
     else if (kind === "run") c.run = payload;
+    else return;
+    c.version++;
     if (id === threadId()) queue();
   });
 
@@ -52,39 +57,28 @@
     c.asked = true;
     try {
       const r = await (await fetch(HELPER + "/turn?thread=" + encodeURIComponent(id))).json();
-      (r.items || []).forEach((it, i) => { if (it.id && !c.items.has(it.id)) c.items.set(it.id, { ordinal: i - 1e6, ...it }); });
+      (r.items || []).forEach((it, i) => { if (it.id && !c.items.has(it.id)) c.items.set(it.id, slim({ ...it, ordinal: i - 1e6 })); });
+      c.version++;
       if (id === threadId()) queue();
     } catch { c.asked = false; }  // helper not running: try again next time the chat opens
   };
 
-  // put text in T3's message box; send it unless only filling (Ctrl+click)
-  const reply = (text, send) => {
-    const host = document.querySelector('[data-slot="composer-host"]');
-    const box = host?.querySelector('[contenteditable="true"], textarea');
-    if (!box) return;
-    box.focus();
-    document.execCommand("selectAll");
-    document.execCommand("insertText", false, text);
-    if (!send) return;
-    setTimeout(() => {
-      const submit = host.querySelector('button[aria-label="Submit message"], button[type="submit"]');
-      if (submit && !submit.disabled) submit.click();
-      else box.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", code: "Enter", keyCode: 13, bubbles: true }));
-    }, 50);
-  };
-
-  let current = null;  // what's drawn, so nothing is rebuilt when it hasn't changed
+  let current = null, state = null;  // what's drawn, and the inputs it came from
   const draw = () => {
     const id = threadId();
     let el = document.getElementById("olympus-turn");
     // whether the turn is running: T3's own Stop button says so for the open chat. Its socket
     // doesn't always (a brand-new chat's first "running" comes in the launch reply), so the
     // run status from the hook is only the fallback when there's no message box.
-    const host = document.querySelector('[data-slot="composer-host"]');
-    const run = host ? { status: host.querySelector('button[aria-label="Stop generation"]') ? "running" : "completed" }
-                     : id && chat(id).run;
-    const v = id ? OlympusTurn.view(ordered(chat(id)), run) : { plan: null, box: null };
-    if (id && !chat(id).items.size) load(id);
+    const host = document.querySelector(olympus.COMPOSER);
+    const running = host ? !!host.querySelector('button[aria-label="Stop generation"]') : null;
+    const c = id && chat(id);
+    const now = c ? `${id} ${c.version} ${running} ${dismissed.size}` : "";
+    if (now === state && (!el || el.isConnected)) { if (el) olympusAbove(el); return; }  // nothing changed
+    state = now;
+    if (c && !c.items.size) load(id);
+    const run = running === null ? c && c.run : { status: running ? "running" : "completed" };
+    const v = c ? OlympusTurn.view(ordered(c), run) : { plan: null, box: null };
     const box = v.box && !dismissed.has(v.box.id) ? v.box : null;
     const key = JSON.stringify([id, box, box ? null : v.plan]);
     if (!box && !v.plan) { el?.remove(); current = null; return; }
@@ -101,7 +95,7 @@
           `<button data-i="${i}" class="${i ? "" : "primary"}" title="Ctrl+click to only fill the message box">${esc(a.label)}</button>`).join("")}</div>` : "");
       el.querySelector("[data-close]")?.addEventListener("click", () => { dismissed.add(box.id); draw(); });
       el.querySelectorAll("[data-i]").forEach((b) => b.addEventListener("click", (e) => {
-        reply(box.actions[+b.dataset.i].message, !(e.ctrlKey || e.metaKey));
+        olympus.fill(box.actions[+b.dataset.i].message, { send: !(e.ctrlKey || e.metaKey) });  // Ctrl+click only fills
       }));
     } else {
       const icon = (s) => s.status === "completed" ? `<span class="i">✓</span>`
@@ -112,15 +106,15 @@
     olympusAbove(el);
   };
 
-  let queued = false;
+  let queued = false;  // socket events can come many at once: draw once per frame
   const queue = () => { if (!queued) { queued = true; requestAnimationFrame(() => { queued = false; draw(); }); } };
   addEventListener("hashchange", queue);
-  new MutationObserver(queue).observe(document.documentElement, { childList: true, subtree: true });
+  olympus.onDom(draw);
 
   // Ctrl+Enter in an empty message box presses the box's first button
   addEventListener("keydown", (e) => {
     if (e.key !== "Enter" || !(e.ctrlKey || e.metaKey)) return;
-    const host = e.target.closest?.('[data-slot="composer-host"]');
+    const host = e.target.closest?.(olympus.COMPOSER);
     const first = document.querySelector("#olympus-turn[data-box='1'] [data-i='0']");
     if (!host || !first || (host.querySelector('[contenteditable="true"], textarea')?.innerText || "").trim()) return;
     e.preventDefault();

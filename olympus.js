@@ -1,22 +1,66 @@
 // Switches T3 to the profile's god when you open a thread in that project, and adds the
 // Continue elsewhere / Send to cloud buttons. The god map is filled in from gods.json by patch.py.
-// Shared by all the T3 Olympus scripts (patch.py joins them into one file): the helper's address,
-// HTML escaping, and the chat id in the address bar (null on a new chat or settings page).
+// Shared by all the T3 Olympus scripts (patch.py joins them into one file).
 window.olympus = {
   HELPER: "http://127.0.0.1:47833",
+  COMPOSER: '[data-slot="composer-host"]',
   esc: (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]),
+  // the chat id in the address bar (null on a new chat or settings page)
   threadId: () => {
     const parts = location.hash.replace(/^#\/?/, "").split(/[?#]/)[0].split("/");
     if (parts.length !== 2 || ["draft", "settings", "pull-requests", "new"].includes(parts[0])) return null;
     return decodeURIComponent(parts[1]);
   },
+  // a request to the helper; throws its error message, or a TypeError when it isn't running
+  post: async (path, body, raw) => {
+    const r = await fetch(olympus.HELPER + path, { method: "POST", body: raw ? body : JSON.stringify(body),
+      headers: { "Content-Type": raw ? "application/octet-stream" : "application/json" } });
+    const res = await r.json();
+    if (!r.ok) throw new Error(res.error);
+    return res;
+  },
+  // T3's message box (the editable part), and filling it: replace or append, then optionally send
+  box: () => document.querySelector(`${olympus.COMPOSER} [contenteditable="true"], ${olympus.COMPOSER} textarea`),
+  fill: (text, { append = false, send = false } = {}) => {
+    const box = olympus.box();
+    if (!box) return;
+    box.focus();
+    if (append) {
+      getSelection().selectAllChildren(box);
+      getSelection().collapseToEnd();
+      if (box.innerText.trim()) text = " " + text;
+    } else document.execCommand("selectAll");
+    document.execCommand("insertText", false, text);
+    // Enter, as if typed: clicking T3's send button from a new chat sends it and then opens yet
+    // another new chat instead of the one just started
+    if (send) setTimeout(() => box.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", code: "Enter", keyCode: 13, bubbles: true })), 50);
+  },
+  // one page watcher for every script: fn runs at most once per frame after the page changes
+  onDom: (fn) => {
+    const o = window.olympus;
+    if (!o.ticks) {
+      o.ticks = [];
+      let queued = false;
+      new MutationObserver(() => {
+        if (queued) return;
+        queued = true;
+        requestAnimationFrame(() => { queued = false; o.ticks.forEach((f) => { try { f(); } catch { /* keep the rest */ } }); });
+      }).observe(document.documentElement, { subtree: true, childList: true, characterData: true });
+    }
+    o.ticks.push(fn);
+  },
 };
 
-// One shared place above T3's message box for the Temporary label, the next-step card and the
+// One shared place above T3's message box for the Temporary label, the task list and box, and the
 // dictation status, so they stack instead of each pushing the others out of the way.
 // Usage: olympusAbove(element) puts it there; the CSS order keeps them in a fixed order.
+let stackSized = null;  // the message box the stack's width follows
+const stackWidth = new ResizeObserver(([e]) => {
+  const stack = document.getElementById("olympus-stack");
+  if (stack) stack.style.width = e.target.offsetWidth ? e.target.offsetWidth + "px" : "";
+});
 window.olympusAbove = (el) => {
-  const host = document.querySelector('[data-slot="composer-host"]');
+  const host = document.querySelector(olympus.COMPOSER);
   if (!host) return false;
   let stack = document.getElementById("olympus-stack");
   if (!stack) {
@@ -32,23 +76,24 @@ window.olympusAbove = (el) => {
     document.head.append(style);
   }
   if (stack.nextElementSibling !== host) host.before(stack);
-  const width = host.offsetWidth ? host.offsetWidth + "px" : "";
-  if (stack.style.width !== width) stack.style.width = width;
+  if (stackSized !== host) {  // T3 re-created its message box: follow the new one
+    if (stackSized) stackWidth.unobserve(stackSized);
+    stackWidth.observe(host);
+    stackSized = host;
+  }
   if (el.parentElement !== stack) stack.append(el);
   return true;
 };
 
 (() => {
   const GODS = /*GODS*/ {};
-  const { HELPER, esc, threadId } = olympus;
+  const { HELPER, esc, threadId, post } = olympus;
   const THEME = "t3code:theme";
   const HALVES = "t3code:theme-halves:v1";
   let lastProject = null;
   let expected = null;  // the theme this script last set, so a different one is your own pick
-  let queued = false;
 
   const apply = () => {
-    queued = false;
     if (window !== top) return;  // a split-view pane follows the main window's theme
     const crumb = document.querySelector('[data-slot="workspace-breadcrumb-text"]');
     const project = crumb && crumb.textContent.trim();
@@ -68,13 +113,6 @@ window.olympusAbove = (el) => {
   let showIn = "all";
   fetch(HELPER + "/config").then(r => r.json()).then(c => { showIn = c.show_in || "all"; }).catch(() => {});
   const NOT_RUNNING = "The T3 Olympus helper isn't running. Close T3 and open it from the T3 Olympus shortcut.";
-  const post = async (path, body) => {
-    const r = await fetch(HELPER + path, { method: "POST", headers: { "Content-Type": "application/json" },
-                                           body: JSON.stringify(body) });
-    const res = await r.json();
-    if (!r.ok) throw new Error(res.error);
-    return res;
-  };
   const failed = e => toast(e instanceof TypeError ? NOT_RUNNING : esc(e.message), true);
 
   // Picking a god by hand (Ctrl+Alt+A) makes it the open profile's god: saved to gods.json.
@@ -100,7 +138,9 @@ window.olympusAbove = (el) => {
   // The window's minimize / maximize / close buttons are drawn by T3's desktop shell, light on a
   // dark app and dark on a light one. With the appearance set to System, T3 tells the shell to
   // follow Windows, so a dark god theme on light Windows got dark buttons you can't see. After
-  // each theme change, tell the shell what's actually on screen, read from the page's background.
+  // each theme change, tell the shell whether the god's theme is light or dark (patch.py fills in
+  // each theme's mode from its file).
+  const MODES = /*MODES*/ {};
   let shellMode = null;
   const syncButtons = () => {
     if (window !== top || typeof window.desktopBridge?.setTheme !== "function") return;
@@ -116,12 +156,8 @@ window.olympusAbove = (el) => {
       }
       return;
     }
-    const c = document.createElement("canvas").getContext("2d");
-    c.fillStyle = getComputedStyle(document.body).backgroundColor;
-    c.fillRect(0, 0, 1, 1);
-    const [r, g, b] = c.getImageData(0, 0, 1, 1).data;
-    const mode = 0.2126 * r + 0.7152 * g + 0.0722 * b < 128 ? "dark" : "light";
-    if (mode === shellMode) return;
+    const mode = MODES[document.documentElement.dataset.themeId.slice("pantheon-".length)];
+    if (!mode || mode === shellMode) return;
     shellMode = mode;
     Promise.resolve(window.desktopBridge.setTheme(mode)).catch(() => { shellMode = null; });
   };
@@ -258,14 +294,9 @@ window.olympusAbove = (el) => {
         loadGods(res.gods);
         // the sidebar lists chats, so an empty profile isn't there yet; T3's project chooser has it
         toast(res.messages.map(esc).join("<br>") + (res.added ? '<br><button data-start>Start a chat in it</button>' : ""), true);
-        document.querySelector("#olympus-toast [data-start]")?.addEventListener("click", async () => {
+        document.querySelector("#olympus-toast [data-start]")?.addEventListener("click", () => {
           document.getElementById("olympus-toast")?.remove();
-          document.querySelector('button[aria-label="New thread"]')?.click();
-          for (let i = 0; i < 30; i++) {
-            await new Promise((r) => setTimeout(r, 100));
-            const o = [...document.querySelectorAll('[role="option"]')].find((x) => x.innerText.split(/\n/).some((l) => l.trim() === res.title));
-            if (o) { o.click(); break; }
-          }
+          olympus.pickProject(res.title);  // temporary.js: T3's chooser, picked out of sight
         });
       } catch (err) {
         create.disabled = false;
@@ -296,7 +327,6 @@ window.olympusAbove = (el) => {
 
   const tick = () => { apply(); buttons(); profileButton(); };
   tick();
-  new MutationObserver(() => {
-    if (!queued) { queued = true; requestAnimationFrame(tick); }
-  }).observe(document.documentElement, { subtree: true, childList: true, characterData: true });
+  olympus.onDom(tick);
+  addEventListener("hashchange", tick);
 })();

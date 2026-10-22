@@ -31,10 +31,9 @@ test("run.updated gives a run", () => {
   assert.deepStrictEqual(out, [{ threadId: "t1", kind: "run", payload: run }]);
 });
 
-test("snapshot gives its projection", () => {
-  const projection = { turnItems: [] };
-  const out = parseFrame(JSON.stringify(chunk("5", { kind: "snapshot", projection })), subs);
-  assert.deepStrictEqual(out, [{ threadId: "t1", kind: "snapshot", payload: projection }]);
+test("snapshots are ignored (T3 sends chats it has seen no history; the helper fills them)", () => {
+  const out = parseFrame(JSON.stringify(chunk("5", { kind: "snapshot", projection: { turnItems: [] } })), subs);
+  assert.deepStrictEqual(out, []);
 });
 
 test("array of two messages", () => {
