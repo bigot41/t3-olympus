@@ -59,6 +59,8 @@ ${HEADER} { padding-right: calc(var(--olympus-window-buttons, 0px) + 20px) !impo
 /* with a split open, the main chat's toolbar belongs at the main chat's edge, not the window's */
 :root[data-olympus-split] ${CONTROLS} { right: calc(var(--olympus-split-px) + 12px) !important; }
 :root[data-olympus-split] ${HEADER} { padding-right: 20px !important; }
+#olympus-drop.box { border-radius: 26px; align-items: flex-start; justify-content: flex-end; padding: 6px 14px; font-size: 12px;
+  background: color-mix(in srgb, var(--primary, Highlight) 6%, transparent); }
 #olympus-drop { position: fixed; z-index: 9998; pointer-events: none; border-radius: 10px;
   border: 2px dashed var(--primary, Highlight); background: color-mix(in srgb, var(--primary, Highlight) 12%, transparent);
   display: flex; align-items: center; justify-content: center; font-size: 14px; color: var(--foreground, CanvasText); }
@@ -130,16 +132,24 @@ ${HEADER} { padding-right: calc(var(--olympus-window-buttons, 0px) + 20px) !impo
   const within = (r, x, y) => x > r.left && x < r.left + r.width && y > r.top && y < r.top + r.height;
   const COMPOSER = '[data-slot="composer-host"]';
   // is (x, y) on a message box, in the main chat or in the pane?
-  const onComposer = (x, y) => {
-    const c = main()?.querySelector(COMPOSER);
-    if (c && within(c.getBoundingClientRect(), x, y)) return true;
+  // the message box at (x, y), in the main chat or the pane, as a box in this window's coordinates
+  const composerAt = (x, y) => {
+    const c = main()?.querySelector(COMPOSER)?.getBoundingClientRect();
+    if (c && within(c, x, y)) return c;
     const frame = document.querySelector("#olympus-split iframe");
     const pc = frame?.contentDocument?.querySelector(COMPOSER);
-    if (!pc) return false;
+    if (!pc) return null;
     const f = frame.getBoundingClientRect(), r = pc.getBoundingClientRect();
-    return within({ left: f.left + r.left, top: f.top + r.top, width: r.width, height: r.height }, x, y);
+    const box = { left: f.left + r.left, top: f.top + r.top, width: r.width, height: r.height };
+    return within(box, x, y) ? box : null;
   };
-  const targetAt = (x, y) => (onComposer(x, y) ? null : zones().find((z) => within(z.hit, x, y)) || null);
+  // over a message box the outline hugs that box ("Add to message"); dropping there is left to T3
+  // (main box) or chipInPane (pane box), never a replace
+  const targetAt = (x, y) => {
+    const box = composerAt(x, y);
+    if (box) return { box, label: "Add to message", composer: true, drop: () => {} };
+    return zones().find((z) => within(z.hit, x, y)) || null;
+  };
   // T3 adds a chat dropped on the main message box as a chip itself, but its drag lives in this
   // window, so the pane never sees it: add the same chip there through the pane's own editor
   const chipInPane = (x, y, route, title) => {
@@ -161,8 +171,10 @@ ${HEADER} { padding-right: calc(var(--olympus-window-buttons, 0px) + 20px) !impo
   let drag = null, frameQueued = false;
   const show = (z) => {
     if (z) {
-      Object.assign(drag.zone.style, { left: z.box.left + 8 + "px", top: z.box.top + 8 + "px",
-                                       width: z.box.width - 16 + "px", height: z.box.height - 16 + "px" });
+      const inset = z.composer ? -4 : 8;  // a message box gets a ring just outside it
+      Object.assign(drag.zone.style, { left: z.box.left + inset + "px", top: z.box.top + inset + "px",
+                                       width: z.box.width - 2 * inset + "px", height: z.box.height - 2 * inset + "px" });
+      drag.zone.classList.toggle("box", !!z.composer);
       if (drag.zone.textContent !== z.label) drag.zone.textContent = z.label;
       if (!drag.zone.isConnected) document.body.append(drag.zone);
     } else drag.zone.remove();
@@ -240,12 +252,12 @@ ${HEADER} { padding-right: calc(var(--olympus-window-buttons, 0px) + 20px) !impo
     if (!drag?.native) return;
     const z = targetAt(e.clientX, e.clientY);
     show(z);
-    if (z) { e.preventDefault(); e.dataTransfer.dropEffect = "move"; }
+    if (z && !z.composer) { e.preventDefault(); e.dataTransfer.dropEffect = "move"; }
   }, true);
   addEventListener("drop", (e) => {
     if (!drag?.native) return;
     const z = targetAt(e.clientX, e.clientY);
-    if (!z) { finish(false); return; }  // on a message box: T3's own drop
+    if (!z || z.composer) { finish(false); return; }  // on a message box: T3's own drop
     e.preventDefault();
     e.stopPropagation();
     drag.target = z;
