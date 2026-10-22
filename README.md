@@ -102,7 +102,7 @@ It uses Claude Code's own speech-to-text service, signed in with your Claude Cod
 
 ## Split view
 
-Drag a chat from the sidebar onto the chat area and it opens beside the current one, as in Claude desktop. Two chats side by side is the most: while a split is open, chats can't be dragged. Each side is a full chat with its own message box. Drag the dotted divider to resize it, and × closes it. It comes back if T3 reloads.
+Drag a chat from the sidebar onto the chat area and it opens beside the current one, as in Claude desktop. Two chats side by side is the most: with a split open, drag a chat onto either side and it replaces the chat there (the side under the pointer is outlined). **New thread** (or Ctrl+N with the left chat focused) starts a new chat on the left and keeps the right one. Each side is a full chat with its own message box. Drag the dotted divider to resize it, and × closes it. It comes back if T3 reloads.
 
 The second pane is T3 itself in a frame, so it uses some extra memory while it's open.
 

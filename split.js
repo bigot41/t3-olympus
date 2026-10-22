@@ -1,5 +1,5 @@
 // Split view, like Claude desktop's: drag a chat from the sidebar onto the chat area and it opens
-// beside the current one (two chats at most: with a split open, chats can't be dragged). The second pane is T3 itself in a frame (patch.py lets frames use the
+// beside the current one. With a split open, dropping a chat on either side replaces that side. The second pane is T3 itself in a frame (patch.py lets frames use the
 // desktop bridge), so it's a full chat with its own composer. Drag the divider to resize; × closes.
 (() => {
   // T3 keeps its toolbar a fixed distance from the window's right edge, leaving room for the
@@ -44,7 +44,7 @@ ${HEADER} { padding-right: calc(var(--olympus-window-buttons, 0px) + 20px) !impo
 #olympus-drop { position: fixed; z-index: 9998; pointer-events: none; border-radius: 10px;
   border: 2px dashed var(--primary, Highlight); background: color-mix(in srgb, var(--primary, Highlight) 12%, transparent);
   display: flex; align-items: center; justify-content: center; font-size: 14px; color: var(--foreground, CanvasText); }
-#olympus-ghost { position: fixed; z-index: 9999; pointer-events: none; padding: 4px 10px; border-radius: 6px; font-size: 12px;
+#olympus-ghost { position: fixed; left: 0; top: 0; will-change: transform; z-index: 9999; pointer-events: none; padding: 4px 10px; border-radius: 6px; font-size: 12px;
   background: var(--popover, Canvas); color: var(--foreground, CanvasText); box-shadow: 0 4px 14px rgb(0 0 0 / .35); }
 :root[data-olympus-dragging], :root[data-olympus-dragging] * { user-select: none !important; cursor: grabbing !important; }
 :root[data-olympus-dragging] #olympus-split iframe { pointer-events: none; }`;
@@ -94,38 +94,60 @@ ${HEADER} { padding-right: calc(var(--olympus-window-buttons, 0px) + 20px) !impo
     addEventListener("pointerup", up);
   };
 
-  // Dragging a sidebar chat: past a few pixels it becomes a drag, and dropping it on the chat
-  // area opens it in the split pane. A plain click still opens the chat as usual.
-  let drag = null;
+  // Dragging a sidebar chat: past a few pixels it becomes a drag. With no split, dropping it on the
+  // chat area opens it beside the current chat. With a split open, the side under the pointer is
+  // outlined ("Replace this chat") and dropping swaps that side's chat; two chats is the most.
+  // A plain click still opens the chat as usual.
+  const zones = () => {
+    const m = main()?.getBoundingClientRect();
+    if (!m) return [];
+    const pane = document.getElementById("olympus-split");
+    if (!pane) return [{ hit: m, box: { left: m.left + m.width / 2, top: m.top, width: m.width / 2, height: m.height },
+                         label: "Open in split view", drop: open }];
+    const p = pane.getBoundingClientRect();
+    return [{ hit: m, box: m, label: "Replace this chat", drop: (route) => { location.hash = "#/" + route; } },
+            { hit: p, box: p, label: "Replace this chat", drop: open }];
+  };
+  const within = (r, x, y) => x > r.left && x < r.left + r.width && y > r.top && y < r.top + r.height;
+
+  let drag = null, frameQueued = false;
+  const update = () => {
+    frameQueued = false;
+    if (!drag || !drag.on) return;
+    const { x, y } = drag.at;
+    drag.ghost.style.transform = `translate(${x + 12}px, ${y + 12}px)`;
+    const z = zones().find((z) => within(z.hit, x, y)) || null;
+    if (z) {
+      Object.assign(drag.zone.style, { left: z.box.left + 8 + "px", top: z.box.top + 8 + "px",
+                                       width: z.box.width - 16 + "px", height: z.box.height - 16 + "px" });
+      if (drag.zone.textContent !== z.label) drag.zone.textContent = z.label;
+      if (!drag.zone.isConnected) document.body.append(drag.zone);
+    } else drag.zone.remove();
+    drag.target = z;
+  };
   addEventListener("pointerdown", (e) => {
-    // two chats side by side is the most: with a split open, chats can't be dragged at all
-    if (document.getElementById("olympus-split")) return;
     const row = e.button === 0 && e.target.closest("li[data-thread-item]");
     if (!row) return;
     const [env, thread] = row.dataset.threadItem.split(":");
-    drag = { x: e.clientX, y: e.clientY, route: `${env}/${encodeURIComponent(thread)}`, on: false,
+    drag = { x: e.clientX, y: e.clientY, at: { x: e.clientX, y: e.clientY }, on: false,
+             route: `${env}/${encodeURIComponent(thread)}`,
              title: (row.firstElementChild?.getAttribute("aria-label") || "Chat").split(",")[0] };
   }, true);
   addEventListener("pointermove", (e) => {
     if (!drag) return;
-    if (!drag.on && Math.hypot(e.clientX - drag.x, e.clientY - drag.y) < 12) return;
+    drag.at = { x: e.clientX, y: e.clientY };
     if (!drag.on) {
+      if (Math.hypot(e.clientX - drag.x, e.clientY - drag.y) < 12) return;
       drag.on = true;
+      // the pane stops taking the pointer, and nothing gets text-selected, while dragging
       document.documentElement.setAttribute("data-olympus-dragging", "");
+      getSelection()?.removeAllRanges();
       drag.ghost = Object.assign(document.createElement("div"), { id: "olympus-ghost", textContent: drag.title });
-      drag.zone = Object.assign(document.createElement("div"), { id: "olympus-drop", textContent: "Open in split view" });
+      drag.zone = Object.assign(document.createElement("div"), { id: "olympus-drop" });
       document.body.append(drag.ghost);
     }
-    drag.ghost.style.left = e.clientX + 12 + "px";
-    drag.ghost.style.top = e.clientY + 12 + "px";
-    const r = main()?.getBoundingClientRect();
-    const inside = r && e.clientX > r.left && e.clientX < r.right && e.clientY > r.top && e.clientY < r.bottom;
-    if (inside) {
-      Object.assign(drag.zone.style, { left: r.left + r.width / 2 + 8 + "px", top: r.top + 8 + "px",
-                                       width: r.width / 2 - 16 + "px", height: r.height - 16 + "px" });
-      if (!drag.zone.isConnected) document.body.append(drag.zone);
-    } else drag.zone.remove();
-    drag.over = inside;
+    e.preventDefault();
+    if (!frameQueued) { frameQueued = true; requestAnimationFrame(update); }
   }, true);
   addEventListener("pointerup", () => {
     if (!drag) return;
@@ -139,7 +161,7 @@ ${HEADER} { padding-right: calc(var(--olympus-window-buttons, 0px) + 20px) !impo
     const eat = (ev) => { ev.stopPropagation(); ev.preventDefault(); };
     addEventListener("click", eat, { capture: true, once: true });
     setTimeout(() => removeEventListener("click", eat, true), 300);
-    if (d.over) open(d.route);
+    d.target?.drop(d.route);
   }, true);
 
   // keep the pane next to the chat area (T3 re-renders it) and bring it back after a reload
