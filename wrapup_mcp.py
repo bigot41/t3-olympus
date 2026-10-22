@@ -22,7 +22,7 @@ The user watches two things the app draws from your tool calls: a task list whil
 
 Task list. For any request that edits files or takes more than one command, the first tool call of the turn goes out together with update_plan carrying the whole plan: {"items": [...], "scope": ...}. Items are short imperative phrases in order, the step you are starting in_progress, the rest pending. scope says what the request is to this session: first_task when nothing is finished yet, then continuation (builds on earlier work, the default) or new_task (unrelated). Use update_plan instead of TodoWrite or the Task tools; the app shows only this list. When you start the next step, send {"advance": true} with that step's first call. If you are already past the step shown, send {"done": [numbers], "start": number}, counting from 1. Keep exactly one step in_progress. Do not write the plan out again as a list in your text.
 
-Wrap-up. Every turn in which you kept a task list, changed files or ran commands ends with wrap_up, called once when the work is done and before your closing message. recap is two or three sentences on what is now true and where it stands, including anything not done or not checked. Add ask only when the user has to decide or do something: one short question, the decision alone, without the options and without a recommendation. Then give one or two buttons that answer it, your recommendation first; a label is one to three words, the message is what gets sent as the user's reply. When nothing is waiting on the user, send the recap alone and no card is drawn. Set blocked when you cannot go on without the user. After the call, write your closing message in full; the recap does not replace it, and do not repeat the question there.
+Wrap-up. Every turn in which you kept a task list, changed files or ran commands ends with wrap_up, called once when the work is done and before your closing message. recap is two or three sentences on what is now true and where it stands, including anything not done or not checked. Add ask whenever the user has a next move: a decision, something to check or do, or an obvious next step you could take for them (ship it, run it, fix the rest). ask is one short question, the decision alone, without the options and without a recommendation. Always pair it with one or two buttons that answer it, your recommendation first; a label is one to three words, the message is what gets sent as the user's reply. Leave the buttons off only when no reply can be guessed, such as a name or a value only the user knows. When nothing is waiting on the user and no next step is worth offering, send the recap alone and no card is drawn. Set blocked when you cannot go on without the user. After the call, write your closing message in full; the recap does not replace it, and do not repeat the question there.
 
 Skip both for short answers and ordinary conversation. If you are a subagent, call neither.
 """
@@ -64,11 +64,13 @@ WRAP_TOOL = {
         "properties": {
             "recap": {"type": "string", "description": "Two or three short sentences (about 300 characters): "
                       "what is now true, where it stands, what isn't done or checked."},
-            "ask": {"type": "string", "description": "Only when the user must decide or act: one short "
-                    "question (about 100 characters), the decision alone, no options."},
+            "ask": {"type": "string", "description": "When the user has a decision, a task or an obvious next "
+                    "step: one short question (about 100 characters), the decision alone, no options. "
+                    "Always send actions with it."},
             "blocked": {"type": "boolean", "description": "True when you cannot go on without the user."},
             "actions": {"type": "array", "maxItems": MAX_BUTTONS,
-                        "description": "One or two reply buttons answering ask, your recommendation first.",
+                        "description": "One or two reply buttons answering ask, your recommendation first. "
+                                       "Leave them off only when no answer can be guessed.",
                         "items": {"type": "object", "required": ["label"], "properties": {
                             "label": {"type": "string", "description": "One to three words, e.g. 'Yes, ship it'."},
                             "message": {"type": "string", "description": "The reply the button sends, in the "
