@@ -52,8 +52,16 @@ Tests: `python -m unittest discover -s tests` (39 OK) and `node --test` (39 pass
 
 ## Next steps
 
-1. Merge PR #2 first, then take PR #3 out of draft and merge it (it contains PR #2's commits too).
-2. On a machine with profiles, run `python install.py` so each profile gets the `olympus` tools.
+PR #2 and PR #3 are merged and released as v0.2.0. On another machine with profiles, run `python install.py` so each profile gets the `olympus` tools.
+
+### Fixed after the first live use (2026-10-22, checked by Mohammed in T3)
+
+- **Split pane blank.** Chats listed under a project have `data-thread-item="true"`, with the id only in the button's `data-testid="thread-row-<id>"`, so a drag opened `#/true/undefined`. `split.js` `rowChat` reads both kinds. The pane now sits outside T3's layout (fixed, the chat area gets a margin), because moving a frame in the page reloads it. It counts as ready only once the frame shows a message box.
+- **Lag.** The divider drags a guide line and resizes once on release. Open and close slide with transform only.
+- **Chat tags.** Dropping a chat on either message box adds the chip if T3 didn't (`chipAt`).
+- **Continue elsewhere.** Remote Control checks trust on the exact folder or its git repo, not the folders above it. Every profile folder is an untrusted git repo. The helper spots `Workspace not trusted`, T3 shows Allow / Not now, and Allow trusts only that folder in `~/.claude.json` and retries.
+- **New profile** is a "+" left of T3's Sidebar options button.
+- **wrap_up** now asks for a question with buttons whenever there's a next step.
 
 ## Facts found along the way
 
