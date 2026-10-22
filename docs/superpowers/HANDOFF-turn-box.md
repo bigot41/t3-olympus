@@ -1,6 +1,6 @@
 # Handoff: task list, next-step box and New profile button (branch `turn-box`)
 
-Started 2026-10-22 by Mohammed's dev agent, continued the same day from another machine. Tasks 1–6 of 7 are done; **pick it up at Task 7** (docs, install, final live check, PR).
+Started 2026-10-22 by Mohammed's dev agent, continued the same day from another machine. All 7 tasks are done and checked live in T3. What's left is taking PR #3 out of draft and merging (after PR #2).
 
 ## What this is
 
@@ -30,7 +30,7 @@ The behaviour comes from reverse-engineering Claude desktop 3.1623. Those notes 
 | 4. `turnbox.js` replaces `nextstep.js` | done, checked live | `9e3d33b` |
 | 5. `helper.py` `/turn` incremental fallback; `/wrapup` removed | done, checked live | `3e4ee74` |
 | 6. New profile button (`make_profile`, `POST /profile`, `GET /gods/themes`, dialog) | done, checked live | `cc7e9a0` |
-| 7. README/HANDOFF docs, `install.py`, final live check, PR | **not started** | |
+| 7. README, install run, sidebar fix, final live check | done | README commit, `0d4bdbd`, final-check fixes |
 
 Tests: `python -m unittest discover -s tests` (39 OK) and `node --test` (39 pass).
 
@@ -46,14 +46,14 @@ Tests: `python -m unittest discover -s tests` (39 OK) and `node --test` (39 pass
 - The hook gives each `/ws` socket its own `send`, which hid T3's commands from `temporary.js` (PR #2), so leaving a temporary chat stopped deleting it. The hook now records the command socket as `window.olympusT3Socket`.
 - `make_profile` takes about 15 s, mostly `claude mcp add`; the dialog shows "Creating…". An existing T3 project counts as added.
 - The sidebar lists chats, not projects, so a new empty profile isn't in it until it has a chat; T3's project chooser lists it at once, hence the "Start a chat in it" button instead of a reload.
-- The extra "+" squeezes the sidebar's Search label to "S". Worth a look in Task 7.
+- The extra "+" squeezed the sidebar's Search label; the button moved to the bottom row after Usage (`0d4bdbd`).
+- Final check: in a brand-new chat T3 gets the turn's start in its launch reply, before subscribing, so the hook never saw "running". `turnbox.js` now takes running from T3's own Stop generation button; the hook also passes on events from T3's wider subscription that name their chat.
+- Final check result: a new chat given a plain multi-step task (no tool names) kept the list and ended with `wrap_up` on its own; spinner, ticks and clearing all worked. A recap with no question correctly draws no box.
 
-## Next steps (Task 7)
+## Next steps
 
-1. README: replace the next-step card section with the task list + box and the New profile button; file table (`olympus-hook.js`, `turnlogic.js`, `turnbox.js`; no `nextstep.js`); tests (`node --test`, `python -m unittest discover -s tests`).
-2. HANDOFF.md (repo root, if kept): the socket hook and its event, `patch.refresh()`, the DOM hooks (`button[aria-label="Add project"]`, `button[aria-label="Submit message"]`).
-3. `install.py`: probably no change (it already registers `olympus` per profile); run it on the machine that will use this.
-4. Final live check with a real multi-step task in a profile, then take the PR out of draft.
+1. Merge PR #2 first, then take PR #3 out of draft and merge it (it contains PR #2's commits too).
+2. On a machine with profiles, run `python install.py` so each profile gets the `olympus` tools.
 
 ## Facts found along the way
 
