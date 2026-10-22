@@ -18,6 +18,8 @@ class Files(unittest.TestCase):
     def test_olympus_js(self):
         js = patch.files()["olympus.js"]
         self.assertIn("OlympusTurn", js)
+        self.assertIn("olympus-turn", js)
+        self.assertNotIn("olympus-next", js)  # the old polled card is gone
 
 
 if __name__ == "__main__":

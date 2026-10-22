@@ -114,7 +114,7 @@ def files():
     gods = json.dumps(json.loads(gods))
     js = ((HERE / "olympus.js").read_text(encoding="utf-8").replace("/*GODS*/ {}", gods)
           + "".join("\n" + (HERE / f).read_text(encoding="utf-8") for f in
-                    ("cards.js", "turnlogic.js", "nextstep.js", "panel.js", "temporary.js", "split.js", "voice.js", "chips.js")))
+                    ("cards.js", "turnlogic.js", "turnbox.js", "panel.js", "temporary.js", "split.js", "voice.js", "chips.js")))
     return {"index.html": html, "olympus.css": BASE + "".join(theme_css(g) for g in GODS), "olympus.js": js}
 
 
