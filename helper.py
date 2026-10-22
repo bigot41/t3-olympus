@@ -15,7 +15,7 @@ config.json's buttons_show_in picks which T3 projects show the buttons ("all" or
 """
 import glob, json, os, re, socket, sqlite3, subprocess, sys, threading, time, urllib.parse
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-import cards_build
+import cards_build, temporary, voice
 from organize import CONFIG
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -100,14 +100,22 @@ def send_to_cloud(thread):
     return {"title": title}
 
 
+wrap_up_cache = {}  # transcript -> ((mtime, size), card)
+
+
 def wrap_up_card(thread):
     """The chat's latest wrap_up call, if nothing has been said since it; else {}."""
     try:
         sid = session_for(thread)[0]
     except ValueError:
         return {}
+    path = glob.glob(os.path.join(HOME, ".claude", "projects", "*", sid + ".jsonl"))[0]
+    st = os.stat(path)
+    key = (st.st_mtime_ns, st.st_size)
+    if path in wrap_up_cache and wrap_up_cache[path][0] == key:  # polled every 2 s: only re-read on change
+        return wrap_up_cache[path][1]
     card = {}
-    with open(glob.glob(os.path.join(HOME, ".claude", "projects", "*", sid + ".jsonl"))[0], encoding="utf-8") as f:
+    with open(path, encoding="utf-8") as f:
         for line in f:
             entry = json.loads(line)
             content = (entry.get("message") or {}).get("content")
@@ -118,6 +126,7 @@ def wrap_up_card(thread):
                 for b in content:
                     if b.get("type") == "tool_use" and b.get("name", "").endswith("__wrap_up"):
                         card = {"id": b["id"], **b.get("input", {})}
+    wrap_up_cache[path] = (key, card)
     return card
 
 
@@ -149,6 +158,57 @@ def session_info(thread):
                  for m in re.finditer(r"^(.+?): .* - (.+)$", out, re.M)]
         connectors_cache[cwd] = (time.time(), found)
     return {"context": context, "connectors": found}
+
+
+leaving = {}  # temporary chat id -> (session, uploads), looked up before T3 deletes the chat
+
+
+def temporary_leaving(body):
+    """Note what to clean up for a temporary chat that is about to be deleted."""
+    thread = str(body["thread"])
+    if thread not in temporary.threads():
+        raise ValueError("Not a temporary chat.")
+    leaving[thread] = (temporary.session_of(thread), temporary.attachments_of(thread))
+    return {"ok": True}
+
+
+def temporary_purge(body):
+    """After T3 deleted a temporary chat, remove its files too."""
+    thread = str(body["thread"])
+    if thread in temporary.threads():
+        raise ValueError("T3 hasn't deleted this chat yet.")
+    if thread not in leaving:
+        raise ValueError("Unknown temporary chat.")
+    session, uploads = leaving.pop(thread)
+    temporary.purge(thread, session, uploads)
+    return {"ok": True}
+
+
+dictation = {}  # the one recording in progress: {"id": ..., "d": voice.Dictation}
+
+
+def voice_post(path, data):
+    """Dictation: /voice/start, then /voice/audio with raw 16 kHz 16-bit mono audio, then /voice/stop."""
+    if path == "/voice/start":
+        if dictation.get("d"):
+            dictation["d"].stop(0)
+        dictation.update(id=os.urandom(8).hex(), d=voice.Dictation())
+        return {"id": dictation["id"]}
+    d = dictation.get("d")
+    if not d:
+        raise ValueError("No dictation in progress.")
+    if path == "/voice/audio":
+        d.audio(data)
+        if d.error:
+            raise ValueError(d.error)
+        return {"text": d.text()}
+    if path == "/voice/stop":
+        dictation.clear()
+        text = d.stop()
+        if d.error and not text:
+            raise ValueError(d.error)
+        return {"text": text}
+    raise ValueError("not found")
 
 
 def gods():
@@ -213,6 +273,9 @@ class Handler(BaseHTTPRequestHandler):
             return self.reply(200, {"show_in": CONFIG.get("buttons_show_in", "all")})
         if self.path == "/gods":
             return self.reply(200, gods())
+        if self.path == "/temporary":  # the project, and leftover chats to delete
+            return self.reply(200, {"title": temporary.TITLE, "ready": temporary.ensure() is not None,
+                                    "threads": temporary.threads()})
         if self.path.startswith("/session?thread="):
             return self.reply(200, session_info(urllib.parse.unquote(self.path.split("=", 1)[1])))
         if self.path.startswith("/wrapup?thread="):
@@ -224,8 +287,15 @@ class Handler(BaseHTTPRequestHandler):
     def do_POST(self):
         if not self.allowed():
             return self.reply(403, {"error": "forbidden"})
+        if self.path.startswith("/voice/"):
+            try:
+                data = self.rfile.read(int(self.headers.get("Content-Length") or 0))
+                return self.reply(200, voice_post(self.path, data))
+            except Exception as e:  # shown to you in T3
+                return self.reply(400, {"error": str(e)})
         action = {"/continue": lambda b: continue_elsewhere(str(b["thread"])),
-                  "/cloud": lambda b: send_to_cloud(str(b["thread"])), "/gods": set_god}.get(self.path)
+                  "/cloud": lambda b: send_to_cloud(str(b["thread"])), "/gods": set_god,
+                  "/temporary/leaving": temporary_leaving, "/temporary/purge": temporary_purge}.get(self.path)
         if not action:
             return self.reply(404, {"error": "not found"})
         try:
@@ -240,7 +310,37 @@ def running():
         return s.connect_ex(("127.0.0.1", PORT)) == 0
 
 
+STAMP = os.path.join(HERE, "local", "helper.json")  # the running helper's code version
+CODE = ("helper.py", "voice.py", "temporary.py", "organize.py", "cards_build.py")
+
+
 if __name__ == "__main__":
+    version = max(os.path.getmtime(os.path.join(HERE, f)) for f in CODE)
     if running():
-        sys.exit(0)
+        # one copy at a time, but a copy started before T3 Olympus was updated is replaced,
+        # or new features would wait for the next reboot
+        try:
+            with open(STAMP, encoding="utf-8") as f:
+                old = json.load(f)
+        except (OSError, ValueError):
+            old = {}
+        if old.get("version") == version:
+            sys.exit(0)
+        # the process listening on the helper's port (also covers a copy older than the stamp file)
+        listen = subprocess.run(["netstat", "-ano", "-p", "TCP"], capture_output=True, text=True,
+                                creationflags=NO_WINDOW).stdout
+        pid = next((line.split()[-1] for line in listen.splitlines()
+                    if f"127.0.0.1:{PORT}" in line and "LISTENING" in line), None)
+        if not pid or not pid.isdigit():
+            sys.exit(0)
+        subprocess.run(["taskkill", "/PID", pid, "/F"], capture_output=True, creationflags=NO_WINDOW)
+        for _ in range(30):
+            if not running():
+                break
+            time.sleep(0.1)
+        else:
+            sys.exit(0)
+    os.makedirs(os.path.dirname(STAMP), exist_ok=True)
+    with open(STAMP, "w", encoding="utf-8") as f:
+        json.dump({"version": version}, f)
     ThreadingHTTPServer(("127.0.0.1", PORT), Handler).serve_forever()

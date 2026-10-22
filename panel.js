@@ -2,8 +2,7 @@
 // how full the chat's context window is, and the connectors (MCP servers) Claude has there.
 // helper.py's /session reads T3's own context figure and runs claude mcp list in the chat's folder.
 (() => {
-  const HELPER = "http://127.0.0.1:47833";
-  const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+  const { HELPER, esc, threadId } = olympus;
   const style = document.createElement("style");
   style.textContent = `
 #olympus-session { color: color-mix(in srgb, var(--foreground, CanvasText) 80%, transparent); }
@@ -15,11 +14,6 @@
 #olympus-session .dot { width: 6px; height: 6px; border-radius: 50%; flex: none; }`;
   document.head.append(style);
 
-  const threadId = () => {
-    const parts = location.hash.replace(/^#\/?/, "").split(/[?#]/)[0].split("/");
-    if (parts.length !== 2 || ["draft", "settings", "pull-requests", "new"].includes(parts[0])) return null;
-    return decodeURIComponent(parts[1]);
-  };
   const short = (n) => n >= 1e6 ? +(n / 1e6).toFixed(1) + "M" : n >= 1e3 ? Math.round(n / 1e3) + "k" : String(n);
 
   let data = null, dataFor = null, fetchedAt = 0, loading = false;

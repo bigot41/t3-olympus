@@ -1,7 +1,46 @@
 // Switches T3 to the profile's god when you open a thread in that project, and adds the
 // Continue elsewhere / Send to cloud buttons. The god map is filled in from gods.json by patch.py.
+// Shared by all the T3 Olympus scripts (patch.py joins them into one file): the helper's address,
+// HTML escaping, and the chat id in the address bar (null on a new chat or settings page).
+window.olympus = {
+  HELPER: "http://127.0.0.1:47833",
+  esc: (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]),
+  threadId: () => {
+    const parts = location.hash.replace(/^#\/?/, "").split(/[?#]/)[0].split("/");
+    if (parts.length !== 2 || ["draft", "settings", "pull-requests", "new"].includes(parts[0])) return null;
+    return decodeURIComponent(parts[1]);
+  },
+};
+
+// One shared place above T3's message box for the Temporary label, the next-step card and the
+// dictation status, so they stack instead of each pushing the others out of the way.
+// Usage: olympusAbove(element) puts it there; the CSS order keeps them in a fixed order.
+window.olympusAbove = (el) => {
+  const host = document.querySelector('[data-slot="composer-host"]');
+  if (!host) return false;
+  let stack = document.getElementById("olympus-stack");
+  if (!stack) {
+    stack = document.createElement("div");
+    stack.id = "olympus-stack";
+    const style = document.createElement("style");
+    style.textContent = `
+#olympus-stack { position: relative; z-index: 1; /* above the composer's frosted backdrop */
+  display: flex; flex-direction: column; gap: 6px; min-width: 0; box-sizing: border-box;
+  /* inset from the rounded panel behind the composer, so nothing sits on its corner */
+  margin: 0 auto 6px; padding: 10px 14px 0; }
+#olympus-stack:empty { display: none; }`;
+    document.head.append(style);
+  }
+  if (stack.nextElementSibling !== host) host.before(stack);
+  const width = host.offsetWidth ? host.offsetWidth + "px" : "";
+  if (stack.style.width !== width) stack.style.width = width;
+  if (el.parentElement !== stack) stack.append(el);
+  return true;
+};
+
 (() => {
   const GODS = /*GODS*/ {};
+  const { HELPER, esc, threadId } = olympus;
   const THEME = "t3code:theme";
   const HALVES = "t3code:theme-halves:v1";
   let lastProject = null;
@@ -10,6 +49,7 @@
 
   const apply = () => {
     queued = false;
+    if (window !== top) return;  // a split-view pane follows the main window's theme
     const crumb = document.querySelector('[data-slot="workspace-breadcrumb-text"]');
     const project = crumb && crumb.textContent.trim();
     if (!project || project === lastProject) return;
@@ -25,7 +65,6 @@
   };
 
   // helper.py does the work; config.json's buttons_show_in picks the projects ("all" or names).
-  const HELPER = "http://127.0.0.1:47833";
   let showIn = "all";
   fetch(HELPER + "/config").then(r => r.json()).then(c => { showIn = c.show_in || "all"; }).catch(() => {});
   const NOT_RUNNING = "The T3 Olympus helper isn't running. Close T3 and open it from the T3 Olympus shortcut.";
@@ -58,11 +97,39 @@
   };
   new MutationObserver(picked).observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme-id"] });
 
-  const threadId = () => {
-    const parts = location.hash.replace(/^#\/?/, "").split(/[?#]/)[0].split("/");
-    if (parts.length !== 2 || ["draft", "settings", "pull-requests", "new"].includes(parts[0])) return null;
-    return decodeURIComponent(parts[1]);
+  // The window's minimize / maximize / close buttons are drawn by T3's desktop shell, light on a
+  // dark app and dark on a light one. With the appearance set to System, T3 tells the shell to
+  // follow Windows, so a dark god theme on light Windows got dark buttons you can't see. After
+  // each theme change, tell the shell what's actually on screen, read from the page's background.
+  let shellMode = null;
+  const syncButtons = () => {
+    if (window !== top || typeof window.desktopBridge?.setTheme !== "function") return;
+    // only the god themes, whose light and dark versions are the same: pinning the shell to dark
+    // or light changes nothing else there. Any other theme gets T3's own setting back, so System
+    // keeps following Windows.
+    if (!(document.documentElement.dataset.themeId || "").startsWith("pantheon-")) {
+      if (shellMode) {
+        shellMode = null;
+        let own = "system";
+        try { own = localStorage.getItem("t3code:theme-appearance-mode") || own; } catch { /* default */ }
+        Promise.resolve(window.desktopBridge.setTheme(own)).catch(() => {});
+      }
+      return;
+    }
+    const c = document.createElement("canvas").getContext("2d");
+    c.fillStyle = getComputedStyle(document.body).backgroundColor;
+    c.fillRect(0, 0, 1, 1);
+    const [r, g, b] = c.getImageData(0, 0, 1, 1).data;
+    const mode = 0.2126 * r + 0.7152 * g + 0.0722 * b < 128 ? "dark" : "light";
+    if (mode === shellMode) return;
+    shellMode = mode;
+    Promise.resolve(window.desktopBridge.setTheme(mode)).catch(() => { shellMode = null; });
   };
+  let buttonsTimer;
+  new MutationObserver(() => { clearTimeout(buttonsTimer); buttonsTimer = setTimeout(syncButtons, 400); })
+    .observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme-id", "class"] });
+  setTimeout(syncButtons, 1500);
+
 
   const toast = (html, keep) => {
     let t = document.getElementById("olympus-toast");
@@ -72,7 +139,6 @@
     clearTimeout(t.timer);
     if (!keep) t.timer = setTimeout(() => t.remove(), 6000);
   };
-  const esc = s => String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
 
   const call = async (path, label) => {
     const thread = threadId();

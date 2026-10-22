@@ -1,12 +1,13 @@
 """Open T3 Code with T3 Olympus, re-adding it first if an update removed it,
-sorting newly imported chats into the profiles, and starting the buttons helper.
+sorting newly imported chats into the profiles, clearing leftover temporary chats,
+and starting the buttons helper.
 
 The Start Menu and Desktop "T3 Olympus" shortcuts run this with pythonw (no console).
 """
 import os, subprocess, sys, pathlib
 
 sys.path.insert(0, str(pathlib.Path(__file__).parent))
-import organize, patch
+import organize, patch, temporary
 
 EXE = patch.RES.parent / "T3 Code (Beta).exe"
 
@@ -23,6 +24,9 @@ else:
     try:
         if not patch.is_patched():
             patch.patch()
+        temporary.ensure()
+        temporary.sweep()  # T3 is closed, so no temporary chat is open
+        temporary.scrub()  # and its database can be cleaned of deleted temporary chats
         if os.path.isdir(organize.PROFILES):
             organize.main(dry=False)  # sort newly imported chats into the profiles
     except BaseException as e:  # never block opening T3 over the art or sorting (incl. sys.exit)

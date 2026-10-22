@@ -1,0 +1,188 @@
+// Temporary chats (temporary.py does the files): a button next to New thread starts a chat in the
+// hidden "Temporary" project (through T3's own project chooser); the chat is labelled while open, hidden from the sidebar and project
+// picker, and deleted with T3's own delete command when you leave it. Chats left behind by a crash
+// or by closing T3 are deleted the next time T3 opens.
+(() => {
+  const { HELPER } = olympus;
+  const TITLE = "Temporary";
+  const post = (path, body) => fetch(HELPER + path, { method: "POST", headers: { "Content-Type": "application/json" },
+                                                      body: JSON.stringify(body) }).then((r) => r.json());
+  const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+
+  const style = document.createElement("style");
+  style.textContent = `
+/* saved temporary chats and unsent temporary drafts alike */
+[data-slot="sidebar-inner"] li:has(> [aria-label$=", ${TITLE}"]) { display: none !important; }
+[data-olympus-hidden] { display: none !important; }
+:root[data-olympus-temporary] [data-slot="composer-host"] { border: 2px dashed var(--primary, currentColor) !important; }
+#olympus-temp-label { order: 0; align-self: flex-start; display: inline-flex; align-items: center; gap: 6px;
+  max-width: 100%; padding: 3px 10px 3px 8px; border-radius: 999px; font-size: 12px; line-height: 18px; white-space: nowrap;
+  color: color-mix(in srgb, var(--foreground, CanvasText) 85%, transparent);
+  background: color-mix(in srgb, var(--primary, Highlight) 14%, transparent);
+  border: 1px solid color-mix(in srgb, var(--primary, Highlight) 45%, transparent); }
+#olympus-temp-label svg { flex: none; width: 14px; height: 14px; color: var(--primary, Highlight); }
+#olympus-temp-label b { font-weight: 600; color: var(--foreground, CanvasText); }
+#olympus-temp-label span { overflow: hidden; text-overflow: ellipsis; }
+#olympus-temp-button { display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px;
+  border-radius: 6px; background: none; border: 0; color: inherit; cursor: pointer; opacity: .8; }
+#olympus-temp-button:hover { opacity: 1; background: color-mix(in srgb, currentColor 10%, transparent); }
+#olympus-temp-button[aria-pressed="true"] { opacity: 1; color: var(--primary, Highlight);
+  background: color-mix(in srgb, var(--primary, Highlight) 18%, transparent); }
+/* while the button picks a project, T3's chooser stays invisible */
+:root[data-olympus-picking] [role="dialog"]:has([role="option"]),
+:root[data-olympus-picking] [data-slot$="backdrop"] { opacity: 0 !important; }`;
+  document.head.append(style);
+
+  // Lucide "message-square-dashed"
+  const ICON = `<svg class="lucide size-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 17H7l-4 4v-7"/><path d="M14 17h1"/><path d="M14 3h1"/><path d="M19 3a2 2 0 0 1 2 2"/><path d="M21 14v1a2 2 0 0 1-2 2"/><path d="M21 9v1"/><path d="M3 9v1"/><path d="M5 3a2 2 0 0 0-2 2"/><path d="M9 3h1"/></svg>`;
+
+  // T3 has no "delete thread" the page can call, so send its own command on its own connection,
+  // the same message its Delete menu item sends. The connection is the one the page last used.
+  let socket = null;
+  const send = WebSocket.prototype.send;
+  WebSocket.prototype.send = function (data) {
+    if (typeof data === "string" && data.includes('"orchestration.')) socket = this;
+    return send.call(this, data);
+  };
+  const deleteThread = async (thread) => {
+    for (let i = 0; i < 40 && (!socket || socket.readyState !== 1); i++) await wait(250);
+    if (!socket) throw new Error("not connected to T3");
+    send.call(socket, JSON.stringify({ _tag: "Request", id: 2e9 + Math.floor(Math.random() * 1e8),
+      tag: "orchestration.dispatchCommand", headers: [],
+      payload: { type: "thread.delete", commandId: crypto.randomUUID(), threadId: thread } }));
+  };
+
+  const removing = new Set();
+  const remove = async (thread) => {
+    if (removing.has(thread)) return;
+    removing.add(thread);
+    try {
+      // the helper checks T3's database that this is a temporary chat, and notes its files;
+      // anything else is never deleted
+      if (!(await post("/temporary/leaving", { thread })).ok) return;
+      await deleteThread(thread);
+      for (let i = 0; i < 20; i++) {  // then removes them once T3 has deleted the chat
+        await wait(500);
+        const r = await post("/temporary/purge", { thread });
+        if (r.ok) return;
+      }
+    } catch { /* helper not running: the next launch clears it */ } finally { removing.delete(thread); }
+  };
+
+  const route = () => {
+    const parts = location.hash.replace(/^#\/?/, "").split(/[?#]/)[0].split("/");
+    return { draft: parts[0] === "draft", thread: parts.length === 2 && parts[0] !== "draft" ? decodeURIComponent(parts[1]) : null };
+  };
+  const project = () => (document.querySelector('[data-slot="workspace-breadcrumb-text"]') || {}).textContent?.trim();
+
+  // T3's New thread button opens its project chooser. The button picks an entry there: Temporary to
+  // start a temporary chat, or (from inside one) the project you were last in, to go back. The
+  // chooser is hidden while this happens, and the entry is picked on the next frame it appears.
+  const isTemporaryOption = (o) => o.innerText.split(/\n/).some((l) => l.trim() === TITLE);
+  const LAST = "olympus:last-project";
+  // the next frame, or 50 ms if T3 is in the background (frames pause there)
+  const frame = () => new Promise((r) => { requestAnimationFrame(r); setTimeout(r, 50); });
+  let picking = false;
+  const choose = async (match) => {
+    const fresh = document.querySelector('button[aria-label="New thread"]');
+    if (!fresh || picking) return;
+    picking = true;
+    document.documentElement.setAttribute("data-olympus-picking", "");
+    try {
+      fresh.click();
+      for (const end = performance.now() + 2000; performance.now() < end;) {
+        await frame();
+        const options = [...document.querySelectorAll('[role="option"]')];
+        const option = options.find(match) || (options.length && !match.strict && options.find(match.fallback));
+        if (option) { option.removeAttribute("data-olympus-hidden"); option.click(); break; }
+      }
+    } finally {
+      picking = false;
+      document.documentElement.removeAttribute("data-olympus-picking");
+    }
+    document.querySelector('[data-slot="composer-host"] [contenteditable="true"]')?.focus();
+  };
+  const start = () => {
+    fetch(HELPER + "/temporary").catch(() => {});  // makes sure the project exists; no need to wait
+    const strict = (o) => isTemporaryOption(o);
+    strict.strict = true;
+    return choose(strict).then(() => project() === TITLE || wait(300).then(() => choose(strict)));  // T3 still starting: once more
+  };
+  const leave = () => {
+    let last = null;
+    try { last = localStorage.getItem(LAST); } catch { /* none */ }
+    const lines = (o) => o.innerText.split(/\n/).map((l) => l.trim());
+    const match = (o) => !isTemporaryOption(o) && last && lines(o).includes(last);
+    // no remembered project: the first real one in the list
+    match.fallback = (o) => !isTemporaryOption(o) && !/^(No project|Add project)/m.test(o.innerText.trim()) && /[\/]/.test(o.innerText);
+    return choose(match);
+  };
+
+  let current = null;  // the temporary chat on screen, deleted when you leave it
+  const tick = () => {
+    const here = route();
+    const name = project();
+    const temporary = name === TITLE;
+    document.documentElement.toggleAttribute("data-olympus-temporary", temporary);
+    // remember the last real project, to go back to from a temporary chat
+    if (name && !temporary && name !== "No project") { try { localStorage.setItem(LAST, name); } catch { /* not kept */ } }
+    if (current && here.thread !== current) { remove(current); current = null; }
+    // only a chat T3's own sidebar lists under Temporary (the project name can change a moment
+    // before the address does, so the name alone could point at the chat you just left)
+    if (temporary && here.thread && document.querySelector(
+      `li[data-thread-item$=":${CSS.escape(here.thread)}"] > [aria-label$=", ${TITLE}"]`)) current = here.thread;
+
+    // the label above the composer
+    const host = document.querySelector('[data-slot="composer-host"]');
+    let label = document.getElementById("olympus-temp-label");
+    if (temporary && host) {
+      if (!label) {
+        label = document.createElement("div");
+        label.id = "olympus-temp-label";
+        label.title = "Not saved to your chat history. Deleted when you leave this chat.";
+        label.innerHTML = `${ICON}<span><b>Temporary chat</b> · not saved, deleted when you leave</span>`;
+      }
+      olympusAbove(label);
+    } else if (label) label.remove();
+
+    // keep Temporary out of the project picker, except while this script picks it
+    if (!picking) document.querySelectorAll('[role="option"]').forEach((o) =>
+      o.toggleAttribute("data-olympus-hidden", isTemporaryOption(o)));
+
+    // the button, next to T3's own New thread button
+    const fresh = document.querySelector('button[aria-label="New thread"]');
+    if (fresh && !document.getElementById("olympus-temp-button")) {
+      const b = document.createElement("button");
+      b.id = "olympus-temp-button";
+      b.type = "button";
+      b.innerHTML = ICON;
+      b.onclick = (e) => { e.stopPropagation(); (project() === TITLE ? leave : start)(); };
+      fresh.after(b);
+    }
+    // the same button takes you back out of a temporary chat
+    const b = document.getElementById("olympus-temp-button");
+    if (b && b.getAttribute("aria-pressed") !== String(temporary)) {
+      b.setAttribute("aria-pressed", String(temporary));
+      b.title = temporary ? "Leave temporary chat: back to a normal new chat" : "Temporary chat: not saved, deleted when you leave it";
+      b.setAttribute("aria-label", temporary ? "Leave temporary chat" : "Temporary chat");
+    }
+  };
+
+  let queued = false;
+  new MutationObserver(() => {
+    if (!queued) { queued = true; requestAnimationFrame(() => { queued = false; tick(); }); }
+  }).observe(document.documentElement, { subtree: true, childList: true, characterData: true });
+  window.addEventListener("hashchange", tick);
+
+  // chats left behind when T3 was closed or crashed while one was open (main window only)
+  if (window === top) setTimeout(async () => {
+    try {
+      const { threads } = await (await fetch(HELPER + "/temporary")).json();
+      // chats on screen are kept: the main chat and the split pane's (split.js keeps its route)
+      let pane = null;
+      try { pane = sessionStorage.getItem("olympus:split"); } catch { /* none */ }
+      const open = new Set([route().thread, pane && decodeURIComponent(pane.split("/").pop())]);
+      for (const t of threads) if (!open.has(t)) remove(t);
+    } catch { /* helper not running */ }
+  }, 3000);
+})();
