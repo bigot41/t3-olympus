@@ -37,11 +37,21 @@ git clone https://github.com/bigot41/t3-olympus.git
 python t3-olympus/install.py
 ```
 
-The installer copies the 18 themes into T3, creates `config.json` and `gods.json` from the examples, and adds a **T3 Olympus** shortcut to the Start Menu and Desktop. Close T3, then open it from that shortcut. From now on, always open T3 that way.
+The installer copies the 18 themes into T3, creates `config.json` and `gods.json` from the examples, and adds a **T3 Olympus** shortcut to the Start Menu and Desktop. It also puts the helper in your Startup folder, so the buttons and cards work even when T3 opens some other way, such as after an in-app update. Close T3, then open it from that shortcut. From now on, always open T3 that way.
 
 ## Set up your profiles
 
 A profile is a folder inside `profiles_dir` (default `~/Projects/_profiles`) that is also a T3 project.
+
+The quick way:
+
+```bash
+python new_profile.py gamedev hephaestus --agent
+```
+
+That makes the folder with a starter `CLAUDE.md`, adds it to T3 and sets its god. `--agent` also writes `~/.claude/agents/gamedev.md`, so other chats can hand work to it. Rewrite the `CLAUDE.md` for the role, then reopen T3 from the shortcut.
+
+By hand:
 
 1. Make the folder, for example `~/Projects/_profiles/gamedev`. Copy `profile-template/CLAUDE.md` into it and rewrite it for the role: that file is the agent's instructions.
 2. In T3, add the folder as a project (the folder icon next to **Projects** in the sidebar). It shows up as **Gamedev**.
@@ -58,6 +68,7 @@ Name one profile `general` (or change `default_profile` in `config.json`): chats
 | `projects_dir` | Where your project folders live. |
 | `profiles_dir` | Where your profile folders live. |
 | `default_profile` | Where chats go when no rule matches. |
+| `remove_empty_projects` | `true` to remove T3 projects outside `profiles_dir` once sorting leaves them with no chats. Off by default. |
 | `buttons_show_in` | `"all"`, or a list of profile names such as `["Dev", "Marketing"]`, for the hand-off buttons. |
 | `folders` | Folder name, or the start of one, under `projects_dir` → profile. The first match wins, so list sub-folders first. |
 | `topics` | Exact chat title → profile, for chats started in `projects_dir` itself. |
@@ -65,7 +76,7 @@ Name one profile `general` (or change `default_profile` in `config.json`): chats
 
 `gods.json` maps each profile to its god. Ctrl+Alt+A updates it for you, but you can edit it by hand too. The names are the theme names in lowercase; Ares is `mars`.
 
-Every time the shortcut opens T3, it sorts newly imported chats into your profiles and removes the folder projects left empty. It backs up T3's data to `~/.t3/userdata-backup-<time>` before moving anything. To see what it would do first, close T3 and run:
+Every time the shortcut opens T3, it sorts newly imported chats into your profiles (and, with `remove_empty_projects` on, removes the folder projects left empty). It backs up T3's data to `~/.t3/userdata-backup-<time>` before moving anything. To see what it would do first, close T3 and run:
 
 ```bash
 python organize.py --dry-run
@@ -100,13 +111,14 @@ T3 serves its interface from `resources/server.asar`. `patch.py` marks the inter
 
 | File | Purpose |
 |---|---|
-| `install.py` | One-time setup: themes, config files, shortcut |
+| `install.py` | One-time setup: themes, config files, shortcuts, Startup entry; `--uninstall` |
 | `launch.pyw` | What the shortcut runs: re-patch if needed, sort chats, start the helper, open T3 |
 | `patch.py` | Adds T3 Olympus to T3, or `--restore` takes it out |
 | `olympus.js`, `cards.js` | The code that runs inside T3 |
 | `helper.py` | Local helper for the buttons, god picks and cards |
 | `send_to_cloud.py` | Handoff note, then `claude --cloud` |
 | `cards_build.py` | Writes the profile cards (`python cards_build.py` rebuilds them all) |
+| `new_profile.py` | Makes a profile: folder, T3 project, god |
 | `organize.py` | Sorts chats into profiles |
 | `themes/`, `art/` | The 18 palettes and 54 god images |
 
@@ -115,10 +127,14 @@ T3 serves its interface from `resources/server.asar`. `patch.py` marks the inter
 Close T3, then:
 
 ```bash
+python install.py --uninstall
+```
+
+```bash
 python patch.py --restore
 ```
 
-Delete the **T3 Olympus** shortcuts and the `pantheon-*.json` files in `~/.t3/userdata/themes`.
+The first removes the shortcuts, the Startup entry and the themes; the second takes T3 Olympus out of T3.
 
 ## Credits
 

@@ -2,6 +2,7 @@
   "projects_dir": "~/Projects",
   "profiles_dir": "~/Projects/_profiles",
   "default_profile": "general",
+  "remove_empty_projects": false,
   "buttons_show_in": "all",
   "folders": {
     "my-website": "marketing",

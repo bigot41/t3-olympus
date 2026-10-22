@@ -1,14 +1,31 @@
-"""Set up T3 Olympus: the 18 god themes, your config files, and the "T3 Olympus" shortcut.
+"""Set up T3 Olympus: the 18 god themes, your config files, the "T3 Olympus" shortcut,
+and a Startup entry that runs the buttons helper when you sign in to Windows.
 
-    python install.py
-
-Safe to run again: it never overwrites your config.json or gods.json.
+    python install.py              install (safe to run again: never overwrites config.json or gods.json)
+    python install.py --uninstall  remove the shortcuts, the Startup entry and the themes
 """
 import pathlib, shutil, subprocess, sys
 
 HERE = pathlib.Path(__file__).resolve().parent
 THEMES = pathlib.Path.home() / ".t3/userdata/themes"
 T3 = pathlib.Path.home() / "AppData/Local/Programs/t3code/T3 Code (Beta).exe"
+# (folder, shortcut name, script it runs)
+SHORTCUTS = [("Programs", "T3 Olympus.lnk", "launch.pyw"), ("Desktop", "T3 Olympus.lnk", "launch.pyw"),
+             ("Startup", "T3 Olympus helper.lnk", "helper.py")]
+
+
+def powershell(script):
+    subprocess.run(["powershell", "-NoProfile", "-Command", script], check=True)
+
+
+if "--uninstall" in sys.argv:
+    powershell("\n".join(f"Remove-Item -ErrorAction SilentlyContinue "
+                         f"(Join-Path ([Environment]::GetFolderPath('{d}')) '{n}')" for d, n, _ in SHORTCUTS))
+    for theme in THEMES.glob("pantheon-*.json"):
+        theme.unlink()
+    print("removed the shortcuts, the Startup entry and the themes.")
+    print("Close T3, then run: python patch.py --restore")
+    sys.exit()
 
 if not T3.exists():
     sys.exit(f"T3 Code isn't installed at {T3}. Install it from https://t3.codes first.")
@@ -24,16 +41,13 @@ for name in ("config", "gods"):
         print(f"created {name}.json from the example")
 
 pythonw = pathlib.Path(sys.executable).with_name("pythonw.exe")
-ps = f"""
-$sh = New-Object -ComObject WScript.Shell
-foreach ($dir in @([Environment]::GetFolderPath('Programs'), [Environment]::GetFolderPath('Desktop'))) {{
-  $s = $sh.CreateShortcut((Join-Path $dir 'T3 Olympus.lnk'))
-  $s.TargetPath = '{pythonw}'
-  $s.Arguments = '"{HERE / "launch.pyw"}"'
-  $s.WorkingDirectory = '{HERE}'
-  $s.IconLocation = '{T3},0'
-  $s.Save()
-}}"""
-subprocess.run(["powershell", "-NoProfile", "-Command", ps], check=True)
+powershell("$sh = New-Object -ComObject WScript.Shell\n" + "\n".join(f"""
+$s = $sh.CreateShortcut((Join-Path ([Environment]::GetFolderPath('{d}')) '{n}'))
+$s.TargetPath = '{pythonw}'
+$s.Arguments = '"{HERE / script}"'
+$s.WorkingDirectory = '{HERE}'
+$s.IconLocation = '{T3},0'
+$s.Save()""" for d, n, script in SHORTCUTS))
 print('added the "T3 Olympus" shortcut to the Start Menu and Desktop')
+print("added the helper to Startup, so the buttons work however T3 is opened")
 print("Close T3, then open it from the T3 Olympus shortcut.")

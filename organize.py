@@ -12,6 +12,7 @@ The rules live in config.json (copy config.example.json):
   folders   folder name (or prefix) under projects_dir -> profile; first match wins
   topics    exact chat title -> profile, for chats started in projects_dir itself
   archive   path fragments of test runs: archived into the default profile
+  remove_empty_projects   true to remove projects outside profiles_dir left with no chats
 Anything else goes to default_profile. A profile is any folder in profiles_dir that is
 also a T3 project, so a new profile needs no code change.
 """
@@ -70,7 +71,8 @@ def main(dry):
     if moves:
         move(con, moves, profile_ids)
     con.close()
-    remove_empty_projects()
+    if CONFIG.get("remove_empty_projects"):
+        remove_empty_projects()
 
 
 def remove_empty_projects():
