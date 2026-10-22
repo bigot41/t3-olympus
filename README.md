@@ -10,7 +10,7 @@ Each profile is a T3 project with its own instructions, and opening a chat in it
 
 ## What you get
 
-- **18 god themes.** Olympus, Hera, Poseidon, Demeter, Athena, Apollo, Artemis, Ares, Aphrodite, Hephaestus, Hestia, Dionysus, Caduceus (Hermes), Hades, Nyx, Helios, Selene and Medusa, in dithered classical marble. Each is either light or dark, and T3 (including its window buttons) follows it whatever your Windows setting.
+- **18 god themes.** Olympus, Hera, Poseidon, Demeter, Athena, Apollo, Artemis, Ares, Aphrodite, Hephaestus, Hestia, Dionysus, Caduceus (Hermes), Hades, Nyx, Helios, Selene and Medusa, in dithered classical marble. Each works in light and dark mode, and the window's minimize, maximize and close buttons follow the theme you see.
 - **One god per profile.** Open a chat in Dev and T3 turns to Hephaestus; open one in Strategy and it turns to Athena. Pick a different god with **Ctrl+Alt+A** while you're in a profile and it becomes that profile's god from then on.
 - **Continue elsewhere.** Keeps the same Claude conversation running in the background with Remote Control, so you can pick it up in Claude desktop, claude.ai or the Claude phone app.
 - **Send to cloud.** Claude writes a handoff note from the chat, then starts a Claude Code cloud session with it.

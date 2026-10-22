@@ -85,6 +85,27 @@ window.olympusAbove = (el) => {
   };
   new MutationObserver(picked).observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme-id"] });
 
+  // The window's minimize / maximize / close buttons are drawn by T3's desktop shell, light on a
+  // dark app and dark on a light one. With the appearance set to System, T3 tells the shell to
+  // follow Windows, so a dark god theme on light Windows got dark buttons you can't see. After
+  // each theme change, tell the shell what's actually on screen, read from the page's background.
+  let shellMode = null;
+  const syncButtons = () => {
+    if (window !== top || typeof window.desktopBridge?.setTheme !== "function") return;
+    const c = document.createElement("canvas").getContext("2d");
+    c.fillStyle = getComputedStyle(document.body).backgroundColor;
+    c.fillRect(0, 0, 1, 1);
+    const [r, g, b] = c.getImageData(0, 0, 1, 1).data;
+    const mode = 0.2126 * r + 0.7152 * g + 0.0722 * b < 128 ? "dark" : "light";
+    if (mode === shellMode) return;
+    shellMode = mode;
+    Promise.resolve(window.desktopBridge.setTheme(mode)).catch(() => { shellMode = null; });
+  };
+  let buttonsTimer;
+  new MutationObserver(() => { clearTimeout(buttonsTimer); buttonsTimer = setTimeout(syncButtons, 400); })
+    .observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme-id", "class"] });
+  setTimeout(syncButtons, 1500);
+
   const threadId = () => {
     const parts = location.hash.replace(/^#\/?/, "").split(/[?#]/)[0].split("/");
     if (parts.length !== 2 || ["draft", "settings", "pull-requests", "new"].includes(parts[0])) return null;
