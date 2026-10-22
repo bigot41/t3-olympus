@@ -19,7 +19,8 @@ Each profile is a T3 project with its own instructions, and opening a chat in it
 - **Split view.** Drag a chat onto the chat area to open it side by side.
 - **Temporary chats.** A chat that isn't saved and is deleted when you leave it.
 - **Context and connectors.** The Ctrl+Shift+B tray shows how full the chat's context is and which connectors Claude has.
-- **Next-step card.** Claude ends a turn with a recap and answer buttons above the message box, as in Claude desktop.
+- **Task list and next-step box.** As in Claude desktop: a live list of steps while Claude works, then a recap with answer buttons when the turn ends.
+- **New profile button.** A **+** in the sidebar makes a profile, its god and its tools in one go.
 - **Chat sorting.** Chats T3 imports from Claude Code land in one project per folder. T3 Olympus files them into your profiles by rules you set.
 - **Survives T3 updates.** Open T3 from the **T3 Olympus** shortcut and it puts everything back if an update removed it.
 
@@ -48,13 +49,15 @@ The installer copies the 18 themes into T3, creates `config.json` and `gods.json
 
 A profile is a folder inside `profiles_dir` (default `~/Projects/_profiles`) that is also a T3 project.
 
-The quick way:
+The quick way: the **+** next to **Add project** at the top of T3's sidebar. Give the profile a name, a god and a line on what it works on, and tick **Let other chats hand work to it** if you want that. It makes the folder with a `CLAUDE.md` built from that line, adds it to T3, sets its god and turns on the task list and next-step box (about 15 seconds, mostly registering the tools with Claude Code). **Start a chat in it** opens it under its god straight away. A new profile only shows in the sidebar once it has a chat, since the sidebar lists chats.
+
+The same from a terminal:
 
 ```bash
 python new_profile.py gamedev hephaestus --agent
 ```
 
-That makes the folder with a starter `CLAUDE.md`, adds it to T3 and sets its god. `--agent` also writes `~/.claude/agents/gamedev.md`, so other chats can hand work to it. Rewrite the `CLAUDE.md` for the role, then reopen T3 from the shortcut.
+`--agent` writes `~/.claude/agents/gamedev.md`, so other chats can hand work to it. Rewrite the `CLAUDE.md` for the role whenever you like.
 
 By hand:
 
@@ -121,11 +124,15 @@ How it works and what it can't promise:
 
 The Ctrl+Shift+B tray also has a **Context** and **Connectors** section, like Claude desktop's side panel. It shows how full the open chat's context window is, and the connectors (MCP servers) Claude has in that chat's folder, with a green or red dot for whether each one is connected. It refreshes every 20 seconds while the tray is open.
 
-## The next-step card
+## Task list and next-step box
 
-Like Claude desktop, Claude can end a turn with a short recap and, when the next move is yours, one question with one or two answer buttons. The card sits just above the message box; a button sends its reply for you, and × hides it. It goes away once you reply.
+Like Claude desktop, in a profile's chats:
 
-It comes from a small tool, `wrap_up` (`wrapup_mcp.py`), which the installer and `new_profile.py` turn on for each profile. To turn it on for any other folder:
+- **While Claude works**, a list of its steps sits just above the message box and ticks them off as it goes (a spinner on the step in progress).
+- **When the turn ends** and the next move is yours, the list gives way to a box: one question, a short recap, and one or two answer buttons. A button sends its reply for you; **Ctrl+click** only puts it in the message box; **Ctrl+Enter** in an empty message box presses the first button; × hides the box. When nothing is waiting on you, nothing is drawn.
+- Both appear the moment Claude makes the call: T3 Olympus listens to T3's own connection, so nothing is polled. After a reload, the helper reads the chat's history once to bring back the list or box.
+
+It comes from a small tool server, `olympus` (`wrapup_mcp.py`), with two tools, `update_plan` and `wrap_up`, and instructions that tell Claude when to use them. The installer and the New profile button turn it on for each profile. To turn it on for any other folder:
 
 ```bash
 python wrapup_mcp.py --register "C:/path/to/folder"
@@ -149,22 +156,25 @@ python wrapup_mcp.py --register "C:/path/to/folder"
 
 T3 serves its interface from `resources/server.asar`. `patch.py` marks the interface's `index.html` as "unpacked" in that archive and writes a copy with one extra line into `server.asar.unpacked`, next to `olympus.css` (the art and layout) and `olympus.js` (the god switcher, buttons and cards). Nothing else in T3 changes, and the original archive is kept as `server.asar.olympus-orig`.
 
-`helper.py` is a small local server on `127.0.0.1:47833` that only answers T3's own window. It looks up a chat's Claude Code session in T3's database and runs the `claude` CLI on it, saves god picks and builds the profile cards.
+`index.html` also gets a small inline script, `olympus-hook.js`, that runs before T3's own code. It watches T3's connection to its server and passes each chat's events (Claude's tool calls, whether a turn is running) to the task list and next-step box. While T3 is open, `patch.refresh()` (run by the shortcut) rewrites these files, so changes reach T3 with **Ctrl+R**; changing `server.asar` itself waits until T3 is closed.
+
+`helper.py` is a small local server on `127.0.0.1:47833` that only answers T3's own window. It looks up a chat's Claude Code session in T3's database and runs the `claude` CLI on it, saves god picks, makes profiles and builds the profile cards.
 
 | File | Purpose |
 |---|---|
 | `install.py` | One-time setup: themes, config files, shortcuts, Startup entry; `--uninstall` |
 | `launch.pyw` | What the shortcut runs: re-patch if needed, sort chats, start the helper, open T3 |
 | `patch.py` | Adds T3 Olympus to T3, or `--restore` takes it out |
-| `olympus.js`, `cards.js`, `nextstep.js`, `panel.js`, `temporary.js`, `split.js`, `voice.js`, `chips.js` | The code that runs inside T3 |
+| `olympus.js`, `cards.js`, `panel.js`, `temporary.js`, `split.js`, `voice.js`, `chips.js` | The code that runs inside T3 |
+| `olympus-hook.js`, `turnlogic.js`, `turnbox.js` | Task list and next-step box: T3's events, the rules, the drawing |
 | `voice.py` | Dictation: streams your microphone to Claude Code's speech-to-text service |
 | `temporary.py` | Temporary chats: the hidden project, file cleanup and database scrub |
-| `tests/` | `python -m unittest discover tests` |
+| `tests/` | `python -m unittest discover -s tests` and `node --test` |
 | `helper.py` | Local helper for the buttons, god picks and cards |
 | `send_to_cloud.py` | Handoff note, then `claude --cloud` |
-| `wrapup_mcp.py`, `nextstep.js` | The next-step card: the `wrap_up` tool, and the card in T3 |
+| `wrapup_mcp.py` | The `olympus` tool server: `update_plan` and `wrap_up` |
 | `cards_build.py` | Writes the profile cards (`python cards_build.py` rebuilds them all) |
-| `new_profile.py` | Makes a profile: folder, T3 project, god |
+| `new_profile.py` | Makes a profile: folder, T3 project, god, tools (also behind the **+** button) |
 | `organize.py` | Sorts chats into profiles |
 | `themes/`, `art/` | The 18 palettes and 54 god images |
 
