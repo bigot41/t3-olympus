@@ -100,34 +100,57 @@ def send_to_cloud(thread):
     return {"title": title}
 
 
-wrap_up_cache = {}  # transcript -> ((mtime, size), card)
+turn_cache = {}  # transcript path -> (bytes read, items, index by tool_use id)
+PREFIX = "turn-item:provider:claudeAgent:native-item:"  # T3's id for a Claude tool call, so items match
 
 
-def wrap_up_card(thread):
-    """The chat's latest wrap_up call, if nothing has been said since it; else {}."""
+def turn_calls(path):
+    """The olympus tool calls and your messages in a Claude transcript, in the shape of T3's turn
+    items, for turnbox.js when T3's socket has no history for a chat. Reads only what was added
+    since the last call (from the start again if the file shrank); a half-written line waits."""
+    try:
+        size = os.path.getsize(path)
+    except OSError:
+        return []
+    offset, items, calls = turn_cache.get(path, (0, [], {}))
+    if size < offset:
+        offset, items, calls = 0, [], {}
+    with open(path, "rb") as f:
+        f.seek(offset)
+        data = f.read()
+    end = data.rfind(b"\n") + 1
+    for line in data[:end].splitlines():
+        try:
+            entry = json.loads(line)
+        except ValueError:
+            continue
+        content = (entry.get("message") or {}).get("content")
+        if entry.get("type") == "user":
+            if isinstance(content, str) or any(b.get("type") == "text" for b in content or []):
+                items.append({"id": "transcript-user:" + str(entry.get("uuid", len(items))), "type": "user_message"})
+            for b in content if isinstance(content, list) else []:
+                if b.get("type") == "tool_result" and b.get("is_error") and b.get("tool_use_id") in calls:
+                    calls[b["tool_use_id"]]["status"] = "failed"
+        elif entry.get("type") == "assistant" and isinstance(content, list):
+            for b in content:
+                name = b.get("name", "")
+                if b.get("type") == "tool_use" and name.endswith(("__update_plan", "__wrap_up")):
+                    item = {"id": PREFIX + b["id"], "type": "dynamic_tool", "toolName": name,
+                            "input": b.get("input") or {}, "status": "completed"}
+                    calls[b["id"]] = item
+                    items.append(item)
+    turn_cache[path] = (offset + end, items, calls)
+    return items
+
+
+def turn_state(thread):
+    """GET /turn: a chat's turn items from its transcript; empty when there is no session or file."""
     try:
         sid = session_for(thread)[0]
-    except ValueError:
-        return {}
-    path = glob.glob(os.path.join(HOME, ".claude", "projects", "*", sid + ".jsonl"))[0]
-    st = os.stat(path)
-    key = (st.st_mtime_ns, st.st_size)
-    if path in wrap_up_cache and wrap_up_cache[path][0] == key:  # polled every 2 s: only re-read on change
-        return wrap_up_cache[path][1]
-    card = {}
-    with open(path, encoding="utf-8") as f:
-        for line in f:
-            entry = json.loads(line)
-            content = (entry.get("message") or {}).get("content")
-            if entry.get("type") == "user" and (isinstance(content, str) or any(
-                    b.get("type") == "text" for b in content or [])):
-                card = {}  # you replied, so the old card is answered
-            elif entry.get("type") == "assistant" and isinstance(content, list):
-                for b in content:
-                    if b.get("type") == "tool_use" and b.get("name", "").endswith("__wrap_up"):
-                        card = {"id": b["id"], **b.get("input", {})}
-    wrap_up_cache[path] = (key, card)
-    return card
+        path = glob.glob(os.path.join(HOME, ".claude", "projects", "*", sid + ".jsonl"))[0]
+    except (ValueError, IndexError, OSError):
+        return {"items": [], "run": None}
+    return {"items": turn_calls(path), "run": None}
 
 
 connectors_cache = {}  # folder -> (time, list), since claude mcp list takes a few seconds
@@ -278,8 +301,8 @@ class Handler(BaseHTTPRequestHandler):
                                     "threads": temporary.threads()})
         if self.path.startswith("/session?thread="):
             return self.reply(200, session_info(urllib.parse.unquote(self.path.split("=", 1)[1])))
-        if self.path.startswith("/wrapup?thread="):
-            return self.reply(200, wrap_up_card(urllib.parse.unquote(self.path.split("=", 1)[1])))
+        if self.path.startswith("/turn?thread="):
+            return self.reply(200, turn_state(urllib.parse.unquote(self.path.split("=", 1)[1])))
         if self.path.startswith("/card?name="):
             return self.reply(200, hover_card(urllib.parse.unquote(self.path.split("=", 1)[1])))
         self.reply(404, {"error": "not found"})
