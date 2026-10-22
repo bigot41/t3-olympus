@@ -15,7 +15,7 @@ config.json's buttons_show_in picks which T3 projects show the buttons ("all" or
 """
 import glob, json, os, re, socket, sqlite3, subprocess, sys, threading, time, urllib.parse
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-import cards_build, temporary
+import cards_build, temporary, voice
 from organize import CONFIG
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -175,6 +175,33 @@ def temporary_purge(body):
     return {"ok": True}
 
 
+dictation = {}  # the one recording in progress: {"id": ..., "d": voice.Dictation}
+
+
+def voice_post(path, data):
+    """Dictation: /voice/start, then /voice/audio with raw 16 kHz 16-bit mono audio, then /voice/stop."""
+    if path == "/voice/start":
+        if dictation.get("d"):
+            dictation["d"].stop(0)
+        dictation.update(id=os.urandom(8).hex(), d=voice.Dictation())
+        return {"id": dictation["id"]}
+    d = dictation.get("d")
+    if not d:
+        raise ValueError("No dictation in progress.")
+    if path == "/voice/audio":
+        d.audio(data)
+        if d.error:
+            raise ValueError(d.error)
+        return {"text": d.text()}
+    if path == "/voice/stop":
+        dictation.clear()
+        text = d.stop()
+        if d.error and not text:
+            raise ValueError(d.error)
+        return {"text": text}
+    raise ValueError("not found")
+
+
 def gods():
     if not os.path.exists(GODS):
         return {}
@@ -251,6 +278,12 @@ class Handler(BaseHTTPRequestHandler):
     def do_POST(self):
         if not self.allowed():
             return self.reply(403, {"error": "forbidden"})
+        if self.path.startswith("/voice/"):
+            try:
+                data = self.rfile.read(int(self.headers.get("Content-Length") or 0))
+                return self.reply(200, voice_post(self.path, data))
+            except Exception as e:  # shown to you in T3
+                return self.reply(400, {"error": str(e)})
         action = {"/continue": lambda b: continue_elsewhere(str(b["thread"])),
                   "/cloud": lambda b: send_to_cloud(str(b["thread"])), "/gods": set_god,
                   "/temporary/leaving": temporary_leaving, "/temporary/purge": temporary_purge}.get(self.path)

@@ -15,6 +15,7 @@ Each profile is a T3 project with its own instructions, and opening a chat in it
 - **Continue elsewhere.** Keeps the same Claude conversation running in the background with Remote Control, so you can pick it up in Claude desktop, claude.ai or the Claude phone app.
 - **Send to cloud.** Claude writes a handoff note from the chat, then starts a Claude Code cloud session with it.
 - **Profile cards.** Rest the mouse on a profile in the sidebar for a moment and a card shows what that profile works on, its folders and its latest chats. Haiku writes the summary, and only re-reads a profile when its chats change.
+- **Dictation.** A microphone button that types what you say, using Claude Code's own speech-to-text.
 - **Split view.** Drag a chat onto the chat area to open it side by side.
 - **Temporary chats.** A chat that isn't saved and is deleted when you leave it.
 - **Context and connectors.** The Ctrl+Shift+B tray shows how full the chat's context is and which connectors Claude has.
@@ -93,6 +94,12 @@ Open a chat and press **Ctrl+Shift+B**. The tray in the top right has a **Hand o
 - **Continue elsewhere** runs `claude --bg --resume <session> --remote-control`. It's the same conversation with the same history, now running in the background, and a pop-up gives you its claude.ai link. Carry on there rather than in the T3 chat, or the two copies drift apart. Pressing it again reuses the same background session. Stop it with `claude stop <id>`.
 - **Send to cloud** opens a terminal. Claude writes a handoff note from a copy of the chat (saved in `handoffs/`), then runs `claude --cloud` with it. A cloud session can't see your computer, so anything it needs has to be in the note or on GitHub. The first time, Claude Code may show its one-time setup screen in that terminal: finish it and the cloud session starts.
 
+## Dictation
+
+The microphone button in the message box works like Claude Code's `/voice`: click it and speak, the words appear above the box as you talk, and click again (or press Esc) to put the text in the message box. Nothing is sent until you press send.
+
+It uses Claude Code's own speech-to-text service, signed in with your Claude Code login (`~/.claude/.credentials.json`). The helper makes the connection, so the login never reaches T3's page. That service is undocumented and meant for Claude Code itself, so a Claude Code update can change or close it. If that happens, dictation shows the error and everything else keeps working. If your Claude Code sign-in has expired, send any message in a Claude chat to renew it.
+
 ## Split view
 
 Drag a chat from the sidebar onto the chat area and it opens beside the current one, as in Claude desktop. Each side is a full chat with its own message box. Drag the dotted divider to resize it, and × closes it. It comes back if T3 reloads.
@@ -149,7 +156,8 @@ T3 serves its interface from `resources/server.asar`. `patch.py` marks the inter
 | `install.py` | One-time setup: themes, config files, shortcuts, Startup entry; `--uninstall` |
 | `launch.pyw` | What the shortcut runs: re-patch if needed, sort chats, start the helper, open T3 |
 | `patch.py` | Adds T3 Olympus to T3, or `--restore` takes it out |
-| `olympus.js`, `cards.js`, `nextstep.js`, `panel.js`, `temporary.js`, `split.js` | The code that runs inside T3 |
+| `olympus.js`, `cards.js`, `nextstep.js`, `panel.js`, `temporary.js`, `split.js`, `voice.js` | The code that runs inside T3 |
+| `voice.py` | Dictation: streams your microphone to Claude Code's speech-to-text service |
 | `temporary.py` | Temporary chats: the hidden project, file cleanup and database scrub |
 | `tests/` | `python -m unittest discover tests` |
 | `helper.py` | Local helper for the buttons, god picks and cards |
