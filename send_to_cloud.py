@@ -33,5 +33,7 @@ with open(path, "w", encoding="utf-8") as f:
 print(note + f"\n\nSaved to {path}\n")
 
 print("Starting the cloud session...\n")
-subprocess.run(["claude", "--cloud", f"Continue this work from a local session ({title}).\n\n{note}"])
-input("\nPress Enter to close.")
+cloud = subprocess.run(["claude", "--cloud", f"Continue this work from a local session ({title}).\n\n{note}"])
+print("\nThe cloud session started. Find it at claude.ai/code." if cloud.returncode == 0 else
+      f"\nThe cloud session didn't start (claude exited with {cloud.returncode}). The note is saved above.")
+input("Press Enter to close.")

@@ -87,7 +87,7 @@ python organize.py --dry-run
 Open a chat and press **Ctrl+Shift+B**. The tray in the top right has a **Hand off** section:
 
 - **Continue elsewhere** runs `claude --bg --resume <session> --remote-control`. It's the same conversation with the same history, now running in the background, and a pop-up gives you its claude.ai link. Carry on there rather than in the T3 chat, or the two copies drift apart. Pressing it again reuses the same background session. Stop it with `claude stop <id>`.
-- **Send to cloud** opens a terminal. Claude writes a handoff note from a copy of the chat (saved in `handoffs/`), then runs `claude --cloud` with it. A cloud session can't see your computer, so anything it needs has to be in the note or on GitHub.
+- **Send to cloud** opens a terminal. Claude writes a handoff note from a copy of the chat (saved in `handoffs/`), then runs `claude --cloud` with it. A cloud session can't see your computer, so anything it needs has to be in the note or on GitHub. The first time, Claude Code may show its one-time setup screen in that terminal: finish it and the cloud session starts.
 
 ## Getting around T3
 
