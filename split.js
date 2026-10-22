@@ -31,19 +31,23 @@ ${HEADER} { padding-right: calc(var(--olympus-window-buttons, 0px) + 20px) !impo
   const KEY = "olympus:split";
   const style = document.createElement("style");
   style.textContent = `
-#olympus-split { position: relative; flex: 0 0 var(--olympus-split-w, 45%); min-width: 320px; display: flex;
-  border-left: 1px dotted color-mix(in srgb, var(--foreground, currentColor) 35%, transparent); }
-#olympus-split iframe { flex: 1; border: 0; width: 100%; height: 100svh; background: var(--background, Canvas);
+/* The pane sits outside T3's own layout, fixed at the window's right edge, and the chat area gets a
+   margin of its width. T3 re-rendering never touches it (moving a frame in the page reloads it), and
+   it slides in and out with transform alone, so the graphics card animates it without laying the
+   page out again per frame. The chat inside fades in once T3 has drawn it. */
+#olympus-split { position: fixed; top: 0; right: 0; bottom: 0; width: var(--olympus-split-px, 45vw); z-index: 30; display: flex;
+  background: var(--background, Canvas); overflow: hidden; contain: layout paint style;
+  border-left: 1px dotted color-mix(in srgb, var(--foreground, currentColor) 35%, transparent);
+  transition: transform .4s cubic-bezier(.16, 1, .3, 1), opacity .4s cubic-bezier(.16, 1, .3, 1); }
+#olympus-split.off { transform: translate3d(100%, 0, 0); opacity: .3; pointer-events: none;
+  transition-duration: .28s; transition-timing-function: cubic-bezier(.7, 0, .84, 0); }
+#olympus-split.opening { transition: none; }
+:root[data-olympus-split] main[data-slot="sidebar-inset"] { margin-right: var(--olympus-split-px) !important; }
+#olympus-split iframe { flex: 1; border: 0; width: 100%; height: 100%; background: var(--background, Canvas);
   opacity: 0; transition: opacity .3s ease-out; }
-/* The pane takes its width at once and slides in from the right over it; only transform and
-   opacity move, so the graphics card animates it and nothing is laid out again per frame. The
-   chat fades in once T3 has drawn it inside. */
-#olympus-split { overflow: hidden; contain: layout paint; will-change: transform;
-  animation: olympus-split-in .42s cubic-bezier(.16, 1, .3, 1); }
 #olympus-split.ready iframe { opacity: 1; }
-#olympus-split.closing { animation: olympus-split-out .26s cubic-bezier(.7, 0, .84, 0) forwards; pointer-events: none; }
-@keyframes olympus-split-in { from { transform: translate3d(48px, 0, 0); opacity: 0; } }
-@keyframes olympus-split-out { to { transform: translate3d(48px, 0, 0); opacity: 0; } }
+#olympus-split-guide { position: fixed; top: 0; bottom: 0; left: 0; width: 2px; z-index: 31; pointer-events: none;
+  background: var(--primary, Highlight); will-change: transform; }
 #olympus-split .loading { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center;
   justify-content: center; gap: 10px; padding: 24px; text-align: center; font-size: 13px; pointer-events: none;
   color: color-mix(in srgb, var(--foreground, CanvasText) 70%, transparent); transition: opacity .3s; }
@@ -56,8 +60,8 @@ ${HEADER} { padding-right: calc(var(--olympus-window-buttons, 0px) + 20px) !impo
 #olympus-split .loading button { padding: 4px 12px; border-radius: 6px; cursor: pointer; font: inherit; border: 0;
   background: var(--primary, Highlight); color: var(--primary-foreground, HighlightText); }
 @keyframes olympus-spin { to { transform: rotate(360deg); } }
-@media (prefers-reduced-motion: reduce) { #olympus-split, #olympus-split.closing, #olympus-split iframe { animation: none; transition: none; } }
-#olympus-split .resize { position: absolute; left: -4px; top: 0; bottom: 0; width: 8px; cursor: col-resize; z-index: 5; }
+@media (prefers-reduced-motion: reduce) { #olympus-split, #olympus-split.off, #olympus-split iframe { transition: none; } }
+#olympus-split .resize { position: absolute; left: 0; top: 0; bottom: 0; width: 8px; cursor: col-resize; z-index: 5; }
 #olympus-split .close { position: absolute; top: 52px; right: 12px; z-index: 5; width: 24px; height: 24px; border: 0;
   border-radius: 6px; cursor: pointer; font-size: 16px; line-height: 1; color: var(--foreground, CanvasText);
   background: color-mix(in srgb, var(--foreground, currentColor) 10%, transparent); }
@@ -76,31 +80,44 @@ ${HEADER} { padding-right: calc(var(--olympus-window-buttons, 0px) + 20px) !impo
   const main = () => document.querySelector('main[data-slot="sidebar-inset"]');
   const base = () => location.origin + location.pathname;
 
+  const WIDTH = "olympus:split-w";
+  const MIN = 320;
+  // the pane's width in px, kept between the chat area's minimum and the window
+  const setWidth = (px) => {
+    const w = Math.round(Math.max(MIN, Math.min(px, innerWidth - 360)));
+    document.documentElement.style.setProperty("--olympus-split-px", w + "px");
+    return w;
+  };
+
   const open = (route) => {
     const m = main();
     if (!m) return;
     let pane = document.getElementById("olympus-split");
-    if (!pane) {
+    if (!pane || pane.classList.contains("off")) {
+      pane?.remove();  // it was closing
+      let saved = 0;
+      try { saved = +localStorage.getItem(WIDTH) || 0; } catch { /* default */ }
+      setWidth(saved || m.getBoundingClientRect().width * 0.45);
       pane = document.createElement("div");
       pane.id = "olympus-split";
+      pane.className = "off opening";
       pane.innerHTML = `<div class="resize" title="Drag to resize"></div><button class="close" title="Close split view">×</button>` +
         `<iframe></iframe><div class="loading"><i></i><span>Opening chat…</span></div>`;
       pane.querySelector(".close").onclick = close;
       pane.querySelector(".resize").onpointerdown = resize;
-    }
-    pane.classList.remove("closing");
-    if (pane.previousElementSibling !== m) m.after(pane);
-    document.documentElement.setAttribute("data-olympus-split", "");
-    if (!pane.sized) {  // the main toolbar's offset; held while you drag the divider, set when you let go
-      pane.sized = new ResizeObserver(() => { if (!pane.dragging) toolbar(pane); });
-      pane.sized.observe(pane);
+      // each time T3 loads in the frame (a reload too), wait for its chat again
+      pane.querySelector("iframe").addEventListener("load", (e) => watch(pane, e.target));
+      document.body.append(pane);
+      document.documentElement.setAttribute("data-olympus-split", "");
+      pane.getBoundingClientRect();  // start off-screen, then slide in
+      pane.classList.remove("opening", "off");
     }
     const frame = pane.querySelector("iframe");
     if (frame.dataset.route !== route) { frame.dataset.route = route; frame.src = base() + "#/" + route; watch(pane, frame); }
     try { sessionStorage.setItem(KEY, route); } catch { /* not kept */ }
   };
-  // Show the chat once T3 has drawn it inside the frame. If it hasn't after 10 s, say what the
-  // frame reports instead of leaving the pane blank, with a Reload button.
+  // Show the chat once T3 has drawn it inside the frame: its message box, not just the empty chat
+  // area T3 draws first. If it hasn't after 10 s, say what the frame shows, with a Reload button.
   const watch = (pane, frame) => {
     clearInterval(pane.watching);
     pane.classList.remove("ready");
@@ -111,7 +128,7 @@ ${HEADER} { padding-right: calc(var(--olympus-window-buttons, 0px) + 20px) !impo
     pane.watching = setInterval(() => {
       let doc = null, why = "";
       try { doc = frame.contentDocument; } catch (e) { why = "the frame can't be read: " + e.message; }
-      if (doc?.querySelector('main[data-slot="sidebar-inset"]')) {
+      if (doc?.querySelector(`main[data-slot="sidebar-inset"] ${olympus.COMPOSER}`)) {
         clearInterval(pane.watching);
         pane.classList.add("ready");
         return;
@@ -119,58 +136,61 @@ ${HEADER} { padding-right: calc(var(--olympus-window-buttons, 0px) + 20px) !impo
       if (Date.now() - started < 10000) return;
       clearInterval(pane.watching);
       const errors = (frame.contentWindow?.olympusFrameErrors || []).slice(-3);
+      const shown = doc?.querySelector('main[data-slot="sidebar-inset"]')?.innerText.trim().slice(0, 120);
       why = why || [`address ${doc?.location?.href || frame.src}`, `page ${doc?.readyState || "not loaded"}`,
-                    `${doc?.body?.childElementCount ?? 0} elements`, ...errors].join(" · ");
+                    `${doc?.body?.childElementCount ?? 0} elements`, shown ? `shows "${shown}"` : "chat area empty", ...errors].join(" · ");
       note.className = "loading failed";
       note.innerHTML = `<span>This chat didn't open in the split pane.</span><code>${olympus.esc(why)}</code><button>Reload pane</button>`;
-      note.querySelector("button").onclick = () => { frame.src = "about:blank"; setTimeout(() => { frame.src = base() + "#/" + frame.dataset.route; watch(pane, frame); }, 50); };
+      note.querySelector("button").onclick = () => { frame.src = "about:blank"; setTimeout(() => { frame.src = base() + "#/" + frame.dataset.route; }, 50); };
     }, 200);
   };
   const close = () => {
     const pane = document.getElementById("olympus-split");
-    if (!pane || pane.classList.contains("closing")) return;
+    if (!pane || pane.classList.contains("off")) return;
     clearInterval(pane.watching);
     try { sessionStorage.removeItem(KEY); } catch { /* nothing kept */ }
     const done = () => {
-      if (!pane.classList.contains("closing") && !matchMedia("(prefers-reduced-motion: reduce)").matches) return;  // reopened meanwhile
-      pane.sized?.disconnect();
+      if (!pane.isConnected) return;
       pane.remove();
-      document.documentElement.removeAttribute("data-olympus-split");
+      if (!document.getElementById("olympus-split")) document.documentElement.removeAttribute("data-olympus-split");
     };
+    pane.classList.add("off");  // slides out, then the chat area takes the room back
     if (matchMedia("(prefers-reduced-motion: reduce)").matches) return done();
-    pane.classList.add("closing");  // slides shut, then goes
-    pane.addEventListener("animationend", (e) => { if (e.target === pane) done(); });
-    setTimeout(done, 500);  // in case the animation never runs
+    pane.addEventListener("transitionend", (e) => { if (e.target === pane && e.propertyName === "transform") done(); });
+    setTimeout(done, 450);  // in case the transition never runs
   };
-  // a var on :root restyles the whole page, so only set it when the width really changed
-  let toolbarPx = -1;
-  const toolbar = (pane) => {
-    const w = Math.round(pane.getBoundingClientRect().width);
-    if (w !== toolbarPx) document.documentElement.style.setProperty("--olympus-split-px", (toolbarPx = w) + "px");
-  };
-  // the divider: at most one width change per frame
+  // The divider: while you drag, only a thin line follows the pointer (moved by transform, so it
+  // keeps up); the two chats are laid out again once, when you let go.
   const resize = (e) => {
     e.preventDefault();
-    const pane = document.getElementById("olympus-split");
-    const right = pane.getBoundingClientRect().right;
-    // the handle keeps the pointer (and its cursor) even over the frame, without restyling the page
     const handle = e.currentTarget;
     handle.setPointerCapture(e.pointerId);
-    let x = e.clientX, queued = false;
-    pane.dragging = true;
-    const apply = () => { queued = false; pane.style.setProperty("--olympus-split-w", Math.max(320, right - x) + "px"); };
-    const move = (ev) => { x = ev.clientX; if (!queued) { queued = true; requestAnimationFrame(apply); } };
+    const guide = Object.assign(document.createElement("div"), { id: "olympus-split-guide" });
+    const left = main()?.getBoundingClientRect().left || 0;
+    const clamp = (x) => Math.max(left + 360, Math.min(x, innerWidth - MIN));
+    let x = clamp(e.clientX), queued = false;
+    const apply = () => { queued = false; guide.style.transform = `translate3d(${x - 1}px, 0, 0)`; };
+    apply();
+    document.body.append(guide);
+    const move = (ev) => { x = clamp(ev.clientX); if (!queued) { queued = true; requestAnimationFrame(apply); } };
     const up = () => {
-      pane.dragging = false;
       handle.removeEventListener("pointermove", move);
       handle.removeEventListener("pointerup", up);
       handle.removeEventListener("pointercancel", up);
-      toolbar(pane);
+      guide.remove();
+      const w = setWidth(innerWidth - x);
+      try { localStorage.setItem(WIDTH, w); } catch { /* not kept */ }
     };
     handle.addEventListener("pointermove", move);
     handle.addEventListener("pointerup", up);
     handle.addEventListener("pointercancel", up);
   };
+  // a smaller window: keep room for the main chat
+  addEventListener("resize", () => {
+    if (!document.getElementById("olympus-split")) return;
+    const w = parseFloat(document.documentElement.style.getPropertyValue("--olympus-split-px"));
+    if (w > innerWidth - 360) setWidth(w);
+  });
 
   // Dragging a sidebar chat: past a few pixels it becomes a drag (T3 tracks the pointer itself;
   // it starts no browser drag for these rows). With no split, dropping it on the chat area opens
@@ -272,11 +292,6 @@ ${HEADER} { padding-right: calc(var(--olympus-window-buttons, 0px) + 20px) !impo
     setTimeout(() => removeEventListener("click", eat, true), 300);
   }, true);
 
-  // keep the pane next to the chat area (T3 re-renders it) and bring it back after a reload
-  olympus.onDom(() => {
-    const pane = document.getElementById("olympus-split");
-    const m = pane && main();
-    if (m && pane.previousElementSibling !== m) m.after(pane);
-  });
+  // bring the pane back after a reload
   try { const route = sessionStorage.getItem(KEY); if (route) setTimeout(() => open(route), 1500); } catch { /* none */ }
 })();
