@@ -158,8 +158,9 @@ def _summary(steps):
     return f'No step is in progress ({done} of {n} done); {{"start": n}} starts one.'
 
 
-def apply_plan_checked(steps, args):
-    """Like apply_plan, plus a flag that is True when the call was refused (steps come back unchanged)."""
+def apply_plan(steps, args):
+    """Apply one update_plan call to the steps (None = no plan yet).
+    Returns (new steps, result text, refused); a refused call leaves the steps unchanged."""
     items = args.get("items")
     has_update = any(args.get(k) not in (None, False, "false", []) for k in ("advance", "done", "start"))
     if items is not None:
@@ -201,12 +202,6 @@ def apply_plan_checked(steps, args):
     return new, "Plan updated. " + _summary(new), False
 
 
-def apply_plan(steps, args):
-    """Apply one update_plan call to the steps (None = no plan yet). Returns (new steps, result text)."""
-    steps, text, _ = apply_plan_checked(steps, args)
-    return steps, text
-
-
 def register(folder):
     """Add this server to Claude Code for one folder (local scope: stored in ~/.claude.json, no prompt)."""
     folder = os.path.abspath(os.path.expanduser(folder))
@@ -216,9 +211,13 @@ def register(folder):
     print(f"next-step card on for {folder}" if r.returncode == 0 else f"couldn't add it to {folder}: {r.stderr.strip()}")
 
 
-def reply(id, result):
-    sys.stdout.write(json.dumps({"jsonrpc": "2.0", "id": id, "result": result}) + "\n")
+def send(msg):
+    sys.stdout.write(json.dumps({"jsonrpc": "2.0", **msg}) + "\n")
     sys.stdout.flush()
+
+
+def reply(id, result):
+    send({"id": id, "result": result})
 
 
 def tool_result(text, error=False):
@@ -233,7 +232,7 @@ def call_tool(name, args):
     if not isinstance(args, dict):
         args = {}
     if name == "update_plan":
-        plan, text, error = apply_plan_checked(plan, args)
+        plan, text, error = apply_plan(plan, args)
         return tool_result(text, error)
     if name == "wrap_up":
         card = normalize_wrap_up(args)
@@ -262,9 +261,7 @@ def serve():
             p = msg.get("params") or {}
             reply(id, call_tool(p.get("name"), p.get("arguments")))
         else:
-            sys.stdout.write(json.dumps({"jsonrpc": "2.0", "id": id,
-                                         "error": {"code": -32601, "message": "unknown method"}}) + "\n")
-            sys.stdout.flush()
+            send({"id": id, "error": {"code": -32601, "message": "unknown method"}})
 
 
 if __name__ == "__main__":

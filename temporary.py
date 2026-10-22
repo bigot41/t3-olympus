@@ -33,22 +33,18 @@ def is_temporary(root):
 
 def ensure():
     """Create the folder with memory off and add it to T3 as the "Temporary" project, once."""
-    path = os.path.join(DIR, ".claude", "settings.json")
-    text = json.dumps(SETTINGS, indent=2)
-    try:
-        current = open(path, encoding="utf-8").read()
-    except OSError:
-        current = None
-    if current != text:  # called on every Temporary chat button press: write only when needed
-        os.makedirs(os.path.dirname(path), exist_ok=True)
-        with open(path, "w", encoding="utf-8") as f:
-            f.write(text)
-    pid = project_id()
-    if pid is None:
-        subprocess.run(["cmd", "/c", os.path.join(HOME, ".t3", "bin", "t3.cmd"), "project", "add", "--title", TITLE,
-                        DIR.replace("\\", "/")], capture_output=True, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
-        pid = project_id()
-    return pid
+    os.makedirs(os.path.join(DIR, ".claude"), exist_ok=True)
+    with open(os.path.join(DIR, ".claude", "settings.json"), "w", encoding="utf-8") as f:
+        json.dump(SETTINGS, f, indent=2)
+    if project_id() is None:
+        t3("project", "add", "--title", TITLE, DIR.replace("\\", "/"))
+    return project_id()
+
+
+def t3(*args):
+    """Run T3's command line (t3 project add/remove ...)."""
+    return subprocess.run(["cmd", "/c", os.path.join(HOME, ".t3", "bin", "t3.cmd"), *args], capture_output=True,
+                          text=True, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
 
 
 def _ro():
@@ -158,18 +154,13 @@ def scrub():
         con.close()
 
 
-def sweep(keep=()):
-    """Clear every temporary chat's files except those in keep (chats still open).
+def sweep():
+    """Clear every temporary chat's files; run with T3 closed, so none is open.
     Claude Code keeps all of them in one folder, since they all ran in DIR."""
     projects = os.path.join(CLAUDE, "projects", slug(DIR))
-    keep_sessions = {session_of(t) for t in keep} - {None}
-    if os.path.isdir(projects):
-        for name in os.listdir(projects):
-            if name.split(".")[0] not in keep_sessions:
-                sid = name.split(".")[0]
-                _remove(os.path.join(projects, name))
-                for d in ("file-history", "session-env"):
-                    _remove(os.path.join(CLAUDE, d, sid))
+    for name in os.listdir(projects) if os.path.isdir(projects) else []:
+        _remove(os.path.join(projects, name))
+        for d in ("file-history", "session-env"):
+            _remove(os.path.join(CLAUDE, d, name.split(".")[0]))
     for t in threads():
-        if t not in keep:
-            _remove(os.path.join(DATA, "logs", "provider", f"events.{t}.log"))
+        _remove(os.path.join(DATA, "logs", "provider", f"events.{t}.log"))

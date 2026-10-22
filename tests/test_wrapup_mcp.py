@@ -49,28 +49,28 @@ class Plan(unittest.TestCase):
     def test_cases(self):
         for c in CASES["plan"]:
             with self.subTest(c["name"]):
-                steps, text = w.apply_plan(c["steps"], c["args"])
+                steps, text, _ = w.apply_plan(c["steps"], c["args"])
                 self.assertEqual(steps, c["after"])
                 self.assertTrue(text)
 
     def test_items_need_scope(self):
         before = [{"content": "a", "status": "pending"}]
-        steps, text = w.apply_plan(before, {"items": [{"content": "b", "status": "pending"}]})
+        steps, text, _ = w.apply_plan(before, {"items": [{"content": "b", "status": "pending"}]})
         self.assertEqual(steps, before)
         self.assertIn("scope", text)
 
     def test_two_in_progress_warns(self):
-        _, text = w.apply_plan(None, {"scope": "first_task", "items": [
+        _, text, _ = w.apply_plan(None, {"scope": "first_task", "items": [
             {"content": "a", "status": "in_progress"}, {"content": "b", "status": "in_progress"}]})
         self.assertIn("one step", text)
 
     def test_advance_without_plan_asks_for_items(self):
-        _, text = w.apply_plan(None, {"advance": True})
+        _, text, _ = w.apply_plan(None, {"advance": True})
         self.assertIn("items", text)
 
     def test_bad_step_number_changes_nothing(self):
         before = [{"content": "a", "status": "pending"}]
-        steps, text = w.apply_plan(before, {"done": [5]})
+        steps, text, _ = w.apply_plan(before, {"done": [5]})
         self.assertEqual(steps, before)
         self.assertIn("Nothing changed", text)
 

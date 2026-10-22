@@ -152,10 +152,7 @@ def turn_calls(path):
                             "input": b.get("input") or {}, "status": "completed"}
                     calls[b["id"]] = item
                     items.append(item)
-    turn_cache.pop(path, None)
     turn_cache[path] = (offset + end, items, calls)
-    while len(turn_cache) > 50:  # keep the chats opened most recently
-        turn_cache.pop(next(iter(turn_cache)))
     return items
 
 
@@ -221,17 +218,18 @@ def temporary_purge(body):
     return {"ok": True}
 
 
-dictation = {}  # the one recording in progress: {"id": ..., "d": voice.Dictation}
+dictation = None  # the one recording in progress (voice.Dictation)
 
 
 def voice_post(path, data):
     """Dictation: /voice/start, then /voice/audio with raw 16 kHz 16-bit mono audio, then /voice/stop."""
+    global dictation
     if path == "/voice/start":
-        if dictation.get("d"):
-            dictation["d"].stop(0)
-        dictation.update(id=os.urandom(8).hex(), d=voice.Dictation())
-        return {"id": dictation["id"]}
-    d = dictation.get("d")
+        if dictation:
+            dictation.stop(0)
+        dictation = voice.Dictation()
+        return {"ok": True}
+    d = dictation
     if not d:
         raise ValueError("No dictation in progress.")
     if path == "/voice/audio":
@@ -240,7 +238,7 @@ def voice_post(path, data):
             raise ValueError(d.error)
         return {"text": d.text()}
     if path == "/voice/stop":
-        dictation.clear()
+        dictation = None
         text = d.stop()
         if d.error and not text:
             raise ValueError(d.error)

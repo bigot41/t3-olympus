@@ -7,8 +7,8 @@
 
 The New profile button in T3's sidebar runs the same code through the helper (make_profile).
 """
-import json, pathlib, re, subprocess, sys
-import wrapup_mcp
+import json, pathlib, re, sys
+import temporary, wrapup_mcp
 from organize import PROFILES
 
 HERE = pathlib.Path(__file__).resolve().parent
@@ -23,9 +23,7 @@ def gods_available():
 
 def t3_add(title, folder):
     """Add the folder to T3 as a project; True when T3 has it (just added, or already there)."""
-    r = subprocess.run(["cmd", "/c", str(HOME / ".t3" / "bin" / "t3.cmd"), "project", "add", "--title", title,
-                        folder.as_posix()], capture_output=True, text=True,
-                       creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+    r = temporary.t3("project", "add", "--title", title, folder.as_posix())
     return r.returncode == 0 and "Error" not in r.stdout + r.stderr or "ProjectAlreadyExists" in r.stdout + r.stderr
 
 

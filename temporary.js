@@ -66,10 +66,6 @@
     } catch { /* helper not running: the next launch clears it */ } finally { removing.delete(thread); }
   };
 
-  const route = () => {
-    const parts = location.hash.replace(/^#\/?/, "").split(/[?#]/)[0].split("/");
-    return { draft: parts[0] === "draft", thread: parts.length === 2 && parts[0] !== "draft" ? decodeURIComponent(parts[1]) : null };
-  };
   const project = () => (document.querySelector('[data-slot="workspace-breadcrumb-text"]') || {}).textContent?.trim();
 
   // T3's New thread button opens its project chooser. The button picks an entry there: Temporary to
@@ -83,7 +79,8 @@
   // the next frame, or 50 ms if T3 is in the background (frames pause there)
   const frame = () => new Promise((r) => { requestAnimationFrame(r); setTimeout(r, 50); });
   let picking = false;
-  const choose = async (match) => {
+  // the first entry match accepts, else (when given) the first one fallback accepts
+  const choose = async (match, fallback) => {
     const fresh = document.querySelector('button[aria-label="New thread"]');
     if (!fresh || picking) return;
     picking = true;
@@ -93,7 +90,7 @@
       for (const end = performance.now() + 2000; performance.now() < end;) {
         await frame();
         const options = [...document.querySelectorAll('[role="option"]')];
-        const option = options.find(match) || (options.length && !match.strict && options.find(match.fallback));
+        const option = options.find(match) || (fallback && options.find(fallback));
         if (option) { option.removeAttribute("data-olympus-hidden"); option.click(); break; }
       }
     } finally {
@@ -103,26 +100,23 @@
     olympus.box()?.focus();
   };
   // shared with olympus.js's New profile button ("Start a chat in it")
-  olympus.pickProject = (title) => { const m = isOption(title); m.strict = true; return choose(m); };
+  olympus.pickProject = (title) => choose(isOption(title));
   const start = () => {
     fetch(HELPER + "/temporary").catch(() => {});  // makes sure the project exists; no need to wait
-    const strict = (o) => isTemporaryOption(o);
-    strict.strict = true;
-    return choose(strict).then(() => project() === TITLE || wait(300).then(() => choose(strict)));  // T3 still starting: once more
+    return choose(isTemporaryOption).then(() => project() === TITLE || wait(300).then(() => choose(isTemporaryOption)));  // T3 still starting: once more
   };
   const leave = () => {
     let last = null;
     try { last = localStorage.getItem(LAST); } catch { /* none */ }
     const match = (o) => !isTemporaryOption(o) && last && lines(o).includes(last);
     // no remembered project: the first real one in the list (it shows its folder path)
-    match.fallback = (o) => !isTemporaryOption(o) && lines(o).some((l) => /[\\/]/.test(l));
-    return choose(match);
+    return choose(match, (o) => !isTemporaryOption(o) && lines(o).some((l) => /[\\/]/.test(l)));
   };
 
   let current = null;  // the temporary chat on screen, deleted when you leave it
   let saved = null;  // the last project written to localStorage
   const tick = () => {
-    const here = route();
+    const here = { thread: olympus.threadId() };
     const name = project();
     const temporary = name === TITLE;
     document.documentElement.toggleAttribute("data-olympus-temporary", temporary);
@@ -151,7 +145,7 @@
     } else if (label) label.remove();
 
     // keep Temporary out of the project picker, except while this script picks it
-    if (!picking && document.querySelector('[role="option"]')) document.querySelectorAll('[role="option"]').forEach((o) =>
+    if (!picking) document.querySelectorAll('[role="option"]').forEach((o) =>
       o.toggleAttribute("data-olympus-hidden", isTemporaryOption(o)));
 
     // the button, next to T3's own New thread button
@@ -183,7 +177,7 @@
       // chats on screen are kept: the main chat and the split pane's (split.js keeps its route)
       let pane = null;
       try { pane = sessionStorage.getItem("olympus:split"); } catch { /* none */ }
-      const open = new Set([route().thread, pane && decodeURIComponent(pane.split("/").pop())]);
+      const open = new Set([olympus.threadId(), pane && decodeURIComponent(pane.split("/").pop())]);
       for (const t of threads) if (!open.has(t)) remove(t);
     } catch { /* helper not running */ }
   }, 3000);
