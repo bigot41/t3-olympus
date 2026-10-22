@@ -1,0 +1,494 @@
+{
+ "wrap_up": [
+  {
+   "name": "recap only, no box",
+   "input": {
+    "recap": "Done."
+   },
+   "card": {
+    "recap": "Done.",
+    "ask": null,
+    "blocked": false,
+    "actions": []
+   },
+   "box": false
+  },
+  {
+   "name": "ask and button, box",
+   "input": {
+    "recap": "Fixed it.",
+    "ask": "Ship it?",
+    "actions": [
+     {
+      "label": "Yes, ship it",
+      "message": "Ship it."
+     },
+     {
+      "label": "Not yet"
+     }
+    ]
+   },
+   "card": {
+    "recap": "Fixed it.",
+    "ask": "Ship it?",
+    "blocked": false,
+    "actions": [
+     {
+      "label": "Yes, ship it",
+      "message": "Ship it."
+     },
+     {
+      "label": "Not yet",
+      "message": "Not yet"
+     }
+    ]
+   },
+   "box": true
+  },
+  {
+   "name": "blocked without ask, box",
+   "input": {
+    "recap": "Stuck on login.",
+    "blocked": true
+   },
+   "card": {
+    "recap": "Stuck on login.",
+    "ask": null,
+    "blocked": true,
+    "actions": []
+   },
+   "box": true
+  },
+  {
+   "name": "aliases",
+   "input": {
+    "outcome": "All set.",
+    "next_ask": "Merge?",
+    "next_actions": [
+     {
+      "label": "Merge"
+     }
+    ],
+    "needs_user": "x"
+   },
+   "card": {
+    "recap": "All set.",
+    "ask": "Merge?",
+    "blocked": true,
+    "actions": [
+     {
+      "label": "Merge",
+      "message": "Merge"
+     }
+    ]
+   },
+   "box": true
+  },
+  {
+   "name": "all buttons invalid, no box",
+   "input": {
+    "recap": "Ok.",
+    "ask": "Run it?",
+    "actions": [
+     {
+      "label": "/commit"
+     },
+     {
+      "label": "Run",
+      "message": "!rm -rf x"
+     }
+    ]
+   },
+   "card": {
+    "recap": "Ok.",
+    "ask": "Run it?",
+    "blocked": false,
+    "actions": []
+   },
+   "box": false
+  },
+  {
+   "name": "three buttons trimmed to two",
+   "input": {
+    "recap": "Ok.",
+    "ask": "Which?",
+    "actions": [
+     {
+      "label": "One"
+     },
+     {
+      "label": "Two"
+     },
+     {
+      "label": "Three"
+     }
+    ]
+   },
+   "card": {
+    "recap": "Ok.",
+    "ask": "Which?",
+    "blocked": false,
+    "actions": [
+     {
+      "label": "One",
+      "message": "One"
+     },
+     {
+      "label": "Two",
+      "message": "Two"
+     }
+    ]
+   },
+   "box": true
+  },
+  {
+   "name": "label over four words dropped",
+   "input": {
+    "recap": "Ok.",
+    "ask": "Go?",
+    "actions": [
+     {
+      "label": "Yes please do it now"
+     },
+     {
+      "label": "No"
+     }
+    ]
+   },
+   "card": {
+    "recap": "Ok.",
+    "ask": "Go?",
+    "blocked": false,
+    "actions": [
+     {
+      "label": "No",
+      "message": "No"
+     }
+    ]
+   },
+   "box": true
+  },
+  {
+   "name": "recap cut at 1200",
+   "input": {
+    "recap": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+   },
+   "card": {
+    "recap": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    "ask": null,
+    "blocked": false,
+    "actions": []
+   },
+   "box": false
+  },
+  {
+   "name": "message defaults to label",
+   "input": {
+    "recap": "Ok.",
+    "ask": "Sure?",
+    "actions": [
+     {
+      "label": "Yes"
+     }
+    ]
+   },
+   "card": {
+    "recap": "Ok.",
+    "ask": "Sure?",
+    "blocked": false,
+    "actions": [
+     {
+      "label": "Yes",
+      "message": "Yes"
+     }
+    ]
+   },
+   "box": true
+  }
+ ],
+ "plan": [
+  {
+   "name": "items replace list",
+   "steps": [
+    {
+     "content": "old",
+     "status": "completed"
+    }
+   ],
+   "args": {
+    "items": [
+     {
+      "content": "a",
+      "status": "in_progress"
+     },
+     {
+      "content": "b",
+      "status": "pending"
+     }
+    ],
+    "scope": "first_task"
+   },
+   "after": [
+    {
+     "content": "a",
+     "status": "in_progress"
+    },
+    {
+     "content": "b",
+     "status": "pending"
+    }
+   ]
+  },
+  {
+   "name": "done then start",
+   "steps": [
+    {
+     "content": "a",
+     "status": "in_progress"
+    },
+    {
+     "content": "b",
+     "status": "pending"
+    },
+    {
+     "content": "c",
+     "status": "pending"
+    }
+   ],
+   "args": {
+    "done": [
+     1
+    ],
+    "start": 3
+   },
+   "after": [
+    {
+     "content": "a",
+     "status": "completed"
+    },
+    {
+     "content": "b",
+     "status": "pending"
+    },
+    {
+     "content": "c",
+     "status": "in_progress"
+    }
+   ]
+  },
+  {
+   "name": "advance moves to next pending",
+   "steps": [
+    {
+     "content": "a",
+     "status": "completed"
+    },
+    {
+     "content": "b",
+     "status": "in_progress"
+    },
+    {
+     "content": "c",
+     "status": "pending"
+    }
+   ],
+   "args": {
+    "advance": true
+   },
+   "after": [
+    {
+     "content": "a",
+     "status": "completed"
+    },
+    {
+     "content": "b",
+     "status": "completed"
+    },
+    {
+     "content": "c",
+     "status": "in_progress"
+    }
+   ]
+  },
+  {
+   "name": "advance wraps to first pending",
+   "steps": [
+    {
+     "content": "a",
+     "status": "pending"
+    },
+    {
+     "content": "b",
+     "status": "completed"
+    },
+    {
+     "content": "c",
+     "status": "in_progress"
+    }
+   ],
+   "args": {
+    "advance": "true"
+   },
+   "after": [
+    {
+     "content": "a",
+     "status": "in_progress"
+    },
+    {
+     "content": "b",
+     "status": "completed"
+    },
+    {
+     "content": "c",
+     "status": "completed"
+    }
+   ]
+  },
+  {
+   "name": "items over 12 cut to 12",
+   "steps": null,
+   "args": {
+    "items": [
+     {
+      "content": "s0",
+      "status": "pending"
+     },
+     {
+      "content": "s1",
+      "status": "pending"
+     },
+     {
+      "content": "s2",
+      "status": "pending"
+     },
+     {
+      "content": "s3",
+      "status": "pending"
+     },
+     {
+      "content": "s4",
+      "status": "pending"
+     },
+     {
+      "content": "s5",
+      "status": "pending"
+     },
+     {
+      "content": "s6",
+      "status": "pending"
+     },
+     {
+      "content": "s7",
+      "status": "pending"
+     },
+     {
+      "content": "s8",
+      "status": "pending"
+     },
+     {
+      "content": "s9",
+      "status": "pending"
+     },
+     {
+      "content": "s10",
+      "status": "pending"
+     },
+     {
+      "content": "s11",
+      "status": "pending"
+     },
+     {
+      "content": "s12",
+      "status": "pending"
+     },
+     {
+      "content": "s13",
+      "status": "pending"
+     },
+     {
+      "content": "s14",
+      "status": "pending"
+     }
+    ],
+    "scope": "new_task"
+   },
+   "after": [
+    {
+     "content": "s0",
+     "status": "pending"
+    },
+    {
+     "content": "s1",
+     "status": "pending"
+    },
+    {
+     "content": "s2",
+     "status": "pending"
+    },
+    {
+     "content": "s3",
+     "status": "pending"
+    },
+    {
+     "content": "s4",
+     "status": "pending"
+    },
+    {
+     "content": "s5",
+     "status": "pending"
+    },
+    {
+     "content": "s6",
+     "status": "pending"
+    },
+    {
+     "content": "s7",
+     "status": "pending"
+    },
+    {
+     "content": "s8",
+     "status": "pending"
+    },
+    {
+     "content": "s9",
+     "status": "pending"
+    },
+    {
+     "content": "s10",
+     "status": "pending"
+    },
+    {
+     "content": "s11",
+     "status": "pending"
+    }
+   ]
+  },
+  {
+   "name": "step text cut at 160",
+   "steps": null,
+   "args": {
+    "items": [
+     {
+      "content": "yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy",
+      "status": "in_progress"
+     }
+    ],
+    "scope": "first_task"
+   },
+   "after": [
+    {
+     "content": "yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy",
+     "status": "in_progress"
+    }
+   ]
+  },
+  {
+   "name": "advance without plan asks for items",
+   "steps": null,
+   "args": {
+    "advance": true
+   },
+   "after": null
+  }
+ ]
+}
