@@ -61,9 +61,6 @@
     if (!loading && (dataFor !== thread || Date.now() - fetchedAt > 20000)) load(thread);
   };
 
-  let queued = false;
-  new MutationObserver(() => {
-    if (!queued) { queued = true; requestAnimationFrame(() => { queued = false; draw(); }); }
-  }).observe(document.documentElement, { subtree: true, childList: true });
+  olympus.onDom(draw);
   setInterval(draw, 5000);
 })();

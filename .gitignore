@@ -7,3 +7,4 @@ handoffs/
 local/
 launch-error.txt
 __pycache__/
+.superpowers/

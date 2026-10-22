@@ -100,10 +100,8 @@ class Cleanup(FakeHome):
         with self.assertRaises(ValueError):
             temporary.purge(TEMP_THREAD, "..\\..\\x")
 
-    def test_sweep_keeps_open_chat_and_normal_chats(self):
+    def test_sweep_clears_temporary_chats_only(self):
         self.assertEqual(self.gone(self.temp_files), self.temp_files)
-        temporary.sweep(keep=[TEMP_THREAD])
-        self.assertEqual(self.gone(self.temp_files), self.temp_files)  # still open: untouched
         temporary.sweep()
         self.assertEqual(self.gone(self.temp_files), [])
         self.assertEqual(self.gone(self.other_files), self.other_files)

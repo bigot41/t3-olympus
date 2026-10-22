@@ -15,7 +15,7 @@ config.json's buttons_show_in picks which T3 projects show the buttons ("all" or
 """
 import glob, json, os, re, socket, sqlite3, subprocess, sys, threading, time, urllib.parse
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-import cards_build, temporary, voice
+import cards_build, new_profile, temporary, voice
 from organize import CONFIG
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -27,6 +27,19 @@ PORT = 47833
 ORIGIN = "t3code://app"
 PYTHON = sys.executable.replace("pythonw.exe", "python.exe")  # a console python for the terminal
 NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+
+
+transcripts = {}  # session id -> its transcript path (a glob over every project folder otherwise)
+
+
+def transcript(sid):
+    """The Claude Code transcript file for a session, or None."""
+    if sid not in transcripts or not os.path.exists(transcripts[sid]):
+        files = glob.glob(os.path.join(HOME, ".claude", "projects", "*", sid + ".jsonl"))
+        if not files:
+            return None
+        transcripts[sid] = files[0]
+    return transcripts[sid]
 
 
 def session_for(thread):
@@ -45,10 +58,10 @@ def session_for(thread):
     if ref.get("driver") != "claudeAgent" or not ref.get("nativeId"):
         raise ValueError("Only Claude chats can be continued elsewhere.")
     sid = ref["nativeId"]
-    files = glob.glob(os.path.join(HOME, ".claude", "projects", "*", sid + ".jsonl"))
-    if not files:
+    path = transcript(sid)
+    if not path:
         raise ValueError(f"Can't find the Claude Code transcript for session {sid}.")
-    with open(files[0], encoding="utf-8") as f:
+    with open(path, encoding="utf-8") as f:
         cwd = next((c for c in (json.loads(line).get("cwd") for line in f) if c), None)
     if not cwd or not os.path.isdir(cwd):
         raise ValueError(f"The folder this chat ran in is gone: {cwd}")
@@ -71,7 +84,25 @@ def remote_url(bg_id, wait=30):
     return None
 
 
-def continue_elsewhere(thread):
+CLAUDE_JSON = os.path.join(HOME, ".claude.json")
+UNTRUSTED = re.compile(r"Workspace not trusted\. Run `claude` in (.+?) once")
+
+
+def trust(folder):
+    """Mark a folder trusted for Claude Code, as accepting its trust prompt does. Remote Control
+    checks the folder itself (or its git repo), not the folders above it."""
+    with open(CLAUDE_JSON, encoding="utf-8") as f:
+        data = json.load(f)
+    key = folder.strip().replace("\\", "/")
+    data.setdefault("projects", {}).setdefault(key, {})["hasTrustDialogAccepted"] = True
+    tmp = CLAUDE_JSON + ".olympus-tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
+        json.dump(data, f, indent=2)
+    os.replace(tmp, CLAUDE_JSON)
+
+
+def continue_elsewhere(thread, allow=False):
+    """allow: you agreed in T3 to trust the folder an earlier try asked about ("trust" in the reply)."""
     sid, cwd, title = session_for(thread)
     # already handed over: reuse that background session instead of starting another
     try:
@@ -83,7 +114,14 @@ def continue_elsewhere(thread):
     if bg:
         bg_id = bg["id"]
     else:
-        out = claude("--bg", "--resume", sid, "--remote-control", title[:60], cwd=cwd)
+        start = lambda: claude("--bg", "--resume", sid, "--remote-control", title[:60], cwd=cwd)
+        out = start()
+        untrusted = UNTRUSTED.search(out.stderr + out.stdout)
+        if untrusted and not allow:  # T3 asks you, then calls again with allow
+            return {"trust": untrusted.group(1).strip(), "title": title}
+        if untrusted:
+            trust(untrusted.group(1))
+            out = start()
         m = re.search(r"backgrounded\s*\W\s*(\w+)", out.stdout)
         if not m:
             raise ValueError("claude --bg failed: " + (out.stderr or out.stdout).strip()[-400:])
@@ -100,34 +138,55 @@ def send_to_cloud(thread):
     return {"title": title}
 
 
-wrap_up_cache = {}  # transcript -> ((mtime, size), card)
+turn_cache = {}  # transcript path -> (bytes read, items, index by tool_use id)
+PREFIX = "turn-item:provider:claudeAgent:native-item:"  # T3's id for a Claude tool call, so items match
 
 
-def wrap_up_card(thread):
-    """The chat's latest wrap_up call, if nothing has been said since it; else {}."""
+def turn_calls(path):
+    """The olympus tool calls and your messages in a Claude transcript, in the shape of T3's turn
+    items, for turnbox.js when T3's socket has no history for a chat. Reads only what was added
+    since the last call (from the start again if the file shrank); a half-written line waits."""
     try:
-        sid = session_for(thread)[0]
-    except ValueError:
-        return {}
-    path = glob.glob(os.path.join(HOME, ".claude", "projects", "*", sid + ".jsonl"))[0]
-    st = os.stat(path)
-    key = (st.st_mtime_ns, st.st_size)
-    if path in wrap_up_cache and wrap_up_cache[path][0] == key:  # polled every 2 s: only re-read on change
-        return wrap_up_cache[path][1]
-    card = {}
-    with open(path, encoding="utf-8") as f:
-        for line in f:
+        size = os.path.getsize(path)
+    except OSError:
+        return []
+    offset, items, calls = turn_cache.get(path, (0, [], {}))
+    if size < offset:
+        offset, items, calls = 0, [], {}
+    with open(path, "rb") as f:
+        f.seek(offset)
+        data = f.read()
+    end = data.rfind(b"\n") + 1
+    for line in data[:end].splitlines():
+        try:
             entry = json.loads(line)
-            content = (entry.get("message") or {}).get("content")
-            if entry.get("type") == "user" and (isinstance(content, str) or any(
-                    b.get("type") == "text" for b in content or [])):
-                card = {}  # you replied, so the old card is answered
-            elif entry.get("type") == "assistant" and isinstance(content, list):
-                for b in content:
-                    if b.get("type") == "tool_use" and b.get("name", "").endswith("__wrap_up"):
-                        card = {"id": b["id"], **b.get("input", {})}
-    wrap_up_cache[path] = (key, card)
-    return card
+        except ValueError:
+            continue
+        content = (entry.get("message") or {}).get("content")
+        if entry.get("type") == "user":
+            if isinstance(content, str) or any(b.get("type") == "text" for b in content or []):
+                items.append({"id": "transcript-user:" + str(entry.get("uuid", len(items))), "type": "user_message"})
+            for b in content if isinstance(content, list) else []:
+                if b.get("type") == "tool_result" and b.get("is_error") and b.get("tool_use_id") in calls:
+                    calls[b["tool_use_id"]]["status"] = "failed"
+        elif entry.get("type") == "assistant" and isinstance(content, list):
+            for b in content:
+                name = b.get("name", "")
+                if b.get("type") == "tool_use" and name.endswith(("__update_plan", "__wrap_up")):
+                    item = {"id": PREFIX + b["id"], "type": "dynamic_tool", "toolName": name,
+                            "input": b.get("input") or {}, "status": "completed"}
+                    calls[b["id"]] = item
+                    items.append(item)
+    turn_cache[path] = (offset + end, items, calls)
+    return items
+
+
+def turn_state(thread):
+    """GET /turn: a chat's turn items from its transcript; empty when there is no session or file."""
+    # only the session's transcript is needed, not the folder session_for also checks
+    sid = temporary.session_of(thread)
+    path = sid and transcript(sid)
+    return {"items": turn_calls(path) if path else [], "run": None}
 
 
 connectors_cache = {}  # folder -> (time, list), since claude mcp list takes a few seconds
@@ -184,17 +243,18 @@ def temporary_purge(body):
     return {"ok": True}
 
 
-dictation = {}  # the one recording in progress: {"id": ..., "d": voice.Dictation}
+dictation = None  # the one recording in progress (voice.Dictation)
 
 
 def voice_post(path, data):
     """Dictation: /voice/start, then /voice/audio with raw 16 kHz 16-bit mono audio, then /voice/stop."""
+    global dictation
     if path == "/voice/start":
-        if dictation.get("d"):
-            dictation["d"].stop(0)
-        dictation.update(id=os.urandom(8).hex(), d=voice.Dictation())
-        return {"id": dictation["id"]}
-    d = dictation.get("d")
+        if dictation:
+            dictation.stop(0)
+        dictation = voice.Dictation()
+        return {"ok": True}
+    d = dictation
     if not d:
         raise ValueError("No dictation in progress.")
     if path == "/voice/audio":
@@ -203,12 +263,19 @@ def voice_post(path, data):
             raise ValueError(d.error)
         return {"text": d.text()}
     if path == "/voice/stop":
-        dictation.clear()
+        dictation = None
         text = d.stop()
         if d.error and not text:
             raise ValueError(d.error)
         return {"text": text}
     raise ValueError("not found")
+
+
+def make_profile(body):
+    """POST /profile from the New profile button: new_profile.make_profile, plus the updated god map."""
+    result = new_profile.make_profile(str(body.get("name", "")), body.get("god") or None,
+                                      str(body.get("about", "")), bool(body.get("agent")))
+    return {**result, "gods": gods()}
 
 
 def gods():
@@ -273,13 +340,15 @@ class Handler(BaseHTTPRequestHandler):
             return self.reply(200, {"show_in": CONFIG.get("buttons_show_in", "all")})
         if self.path == "/gods":
             return self.reply(200, gods())
+        if self.path == "/gods/themes":  # the gods a profile can have, for the New profile dialog
+            return self.reply(200, new_profile.gods_available())
         if self.path == "/temporary":  # the project, and leftover chats to delete
             return self.reply(200, {"title": temporary.TITLE, "ready": temporary.ensure() is not None,
                                     "threads": temporary.threads()})
         if self.path.startswith("/session?thread="):
             return self.reply(200, session_info(urllib.parse.unquote(self.path.split("=", 1)[1])))
-        if self.path.startswith("/wrapup?thread="):
-            return self.reply(200, wrap_up_card(urllib.parse.unquote(self.path.split("=", 1)[1])))
+        if self.path.startswith("/turn?thread="):
+            return self.reply(200, turn_state(urllib.parse.unquote(self.path.split("=", 1)[1])))
         if self.path.startswith("/card?name="):
             return self.reply(200, hover_card(urllib.parse.unquote(self.path.split("=", 1)[1])))
         self.reply(404, {"error": "not found"})
@@ -293,9 +362,10 @@ class Handler(BaseHTTPRequestHandler):
                 return self.reply(200, voice_post(self.path, data))
             except Exception as e:  # shown to you in T3
                 return self.reply(400, {"error": str(e)})
-        action = {"/continue": lambda b: continue_elsewhere(str(b["thread"])),
+        action = {"/continue": lambda b: continue_elsewhere(str(b["thread"]), b.get("allow") is True),
                   "/cloud": lambda b: send_to_cloud(str(b["thread"])), "/gods": set_god,
-                  "/temporary/leaving": temporary_leaving, "/temporary/purge": temporary_purge}.get(self.path)
+                  "/temporary/leaving": temporary_leaving, "/temporary/purge": temporary_purge,
+                  "/profile": make_profile}.get(self.path)
         if not action:
             return self.reply(404, {"error": "not found"})
         try:
@@ -311,7 +381,7 @@ def running():
 
 
 STAMP = os.path.join(HERE, "local", "helper.json")  # the running helper's code version
-CODE = ("helper.py", "voice.py", "temporary.py", "organize.py", "cards_build.py")
+CODE = ("helper.py", "voice.py", "temporary.py", "organize.py", "cards_build.py", "new_profile.py", "wrapup_mcp.py")
 
 
 if __name__ == "__main__":

@@ -2,7 +2,7 @@
 // words appear as you speak, and the text lands in the message box when you stop (click again or
 // press Esc). It uses Claude Code's own speech-to-text service through helper.py (voice.py).
 (() => {
-  const { HELPER, esc } = olympus;
+  const { esc } = olympus;
   const style = document.createElement("style");
   style.textContent = `
 #olympus-mic.on { border-radius: 50%; color: var(--primary-foreground, HighlightText); background: var(--primary, Highlight);
@@ -14,16 +14,11 @@
   document.head.append(style);
 
   const MIC = `<svg class="lucide size-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19v3"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><rect x="9" y="2" width="6" height="13" rx="3"/></svg>`;
-  const call = async (path, body) => {
-    const r = await fetch(HELPER + path, { method: "POST", body, headers: { "Content-Type": "application/octet-stream" } });
-    const res = await r.json();
-    if (!r.ok) throw new Error(res.error);
-    return res;
-  };
+  const call = (path, body) => olympus.post(path, body, true);  // raw audio, not JSON
 
   let rec = null;  // { stream, ctx, node, queue, text }
   const status = (html) => {
-    const host = document.querySelector('[data-slot="composer-host"]');
+    const host = document.querySelector(olympus.COMPOSER);
     let el = document.getElementById("olympus-voice");
     if (html === null || !host) { el?.remove(); return; }
     if (!el) { el = document.createElement("div"); el.id = "olympus-voice"; }
@@ -92,15 +87,7 @@
       await r.queue;
       const { text } = await call("/voice/stop");
       status(null);
-      if (!text) return;
-      const box = document.querySelector('[data-slot="composer-host"] [contenteditable="true"]');
-      if (!box) return;
-      box.focus();
-      const sel = getSelection();
-      sel.selectAllChildren(box);
-      sel.collapseToEnd();
-      const before = box.innerText.trim();
-      document.execCommand("insertText", false, (before ? " " : "") + text);
+      if (text) olympus.fill(text, { append: true });
     } catch (e) {
       status(`<b>Dictation failed:</b> ${esc(e.message)}`);
       setTimeout(() => status(null), 6000);
@@ -108,7 +95,7 @@
   };
 
   const button = () => {
-    const attach = document.querySelector('[data-slot="composer-host"] button[aria-label="Attach files"]');
+    const attach = document.querySelector(`${olympus.COMPOSER} button[aria-label="Attach files"]`);
     if (!attach || document.getElementById("olympus-mic")) return;
     const b = document.createElement("button");
     b.id = "olympus-mic";
@@ -122,8 +109,5 @@
     attach.before(b);
   };
   addEventListener("keydown", (e) => { if (rec && e.key === "Escape") { e.preventDefault(); stop(); } }, true);
-  let queued = false;
-  new MutationObserver(() => {
-    if (!queued) { queued = true; requestAnimationFrame(() => { queued = false; button(); }); }
-  }).observe(document.documentElement, { subtree: true, childList: true });
+  olympus.onDom(button);
 })();

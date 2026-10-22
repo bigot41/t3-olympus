@@ -26,33 +26,42 @@ ${HEADER} { padding-right: calc(var(--olympus-window-buttons, 0px) + 20px) !impo
     measure();
     top.navigator.windowControlsOverlay?.addEventListener("geometrychange", measure);
     top.addEventListener("resize", measure);
-    // a chat dragged from the main window's sidebar over this pane: outside the message box it
-    // replaces this pane's chat; on the message box T3 does its own drop (a mention of the chat)
-    const inBox = (e) => document.elementFromPoint(e.clientX, e.clientY)?.closest('[data-slot="composer-host"]');
-    addEventListener("dragover", (e) => {
-      const d = top.olympusSplitDrag;
-      if (!d?.active()) return;
-      const box = inBox(e);
-      d.overPane(!box);
-      if (!box) e.preventDefault();
-    }, true);
-    addEventListener("dragleave", () => top.olympusSplitDrag?.overPane(false), true);
-    addEventListener("drop", (e) => {
-      const d = top.olympusSplitDrag;
-      if (!d?.active() || inBox(e)) return;
-      e.preventDefault();
-      e.stopPropagation();
-      d.dropOnPane();
-    }, true);
     return;
   }
   const KEY = "olympus:split";
   const style = document.createElement("style");
   style.textContent = `
-#olympus-split { position: relative; flex: 0 0 var(--olympus-split-w, 45%); min-width: 320px; display: flex;
-  border-left: 1px dotted color-mix(in srgb, var(--foreground, currentColor) 35%, transparent); }
-#olympus-split iframe { flex: 1; border: 0; width: 100%; height: 100svh; background: var(--background, Canvas); }
-#olympus-split .resize { position: absolute; left: -4px; top: 0; bottom: 0; width: 8px; cursor: col-resize; z-index: 5; }
+/* The pane sits outside T3's own layout, fixed at the window's right edge, and the chat area gets a
+   margin of its width. T3 re-rendering never touches it (moving a frame in the page reloads it), and
+   it slides in and out with transform alone, so the graphics card animates it without laying the
+   page out again per frame. The chat inside fades in once T3 has drawn it. */
+#olympus-split { position: fixed; top: 0; right: 0; bottom: 0; width: var(--olympus-split-px, 45vw); z-index: 30; display: flex;
+  background: var(--background, Canvas); overflow: hidden; contain: layout paint style;
+  border-left: 1px dotted color-mix(in srgb, var(--foreground, currentColor) 35%, transparent);
+  transition: transform .4s cubic-bezier(.16, 1, .3, 1), opacity .4s cubic-bezier(.16, 1, .3, 1); }
+#olympus-split.off { transform: translate3d(100%, 0, 0); opacity: .3; pointer-events: none;
+  transition-duration: .28s; transition-timing-function: cubic-bezier(.7, 0, .84, 0); }
+#olympus-split.opening { transition: none; }
+:root[data-olympus-split] main[data-slot="sidebar-inset"] { margin-right: var(--olympus-split-px) !important; }
+#olympus-split iframe { flex: 1; border: 0; width: 100%; height: 100%; background: var(--background, Canvas);
+  opacity: 0; transition: opacity .3s ease-out; }
+#olympus-split.ready iframe { opacity: 1; }
+#olympus-split-guide { position: fixed; top: 0; bottom: 0; left: 0; width: 2px; z-index: 31; pointer-events: none;
+  background: var(--primary, Highlight); will-change: transform; }
+#olympus-split .loading { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center;
+  justify-content: center; gap: 10px; padding: 24px; text-align: center; font-size: 13px; pointer-events: none;
+  color: color-mix(in srgb, var(--foreground, CanvasText) 70%, transparent); transition: opacity .3s; }
+#olympus-split.ready .loading { opacity: 0; }
+#olympus-split .loading i { width: 18px; height: 18px; border-radius: 50%; animation: olympus-spin .8s linear infinite;
+  border: 2px solid color-mix(in srgb, var(--primary, Highlight) 30%, transparent); border-top-color: var(--primary, Highlight); }
+#olympus-split .loading.failed { pointer-events: auto; }
+#olympus-split .loading.failed i { display: none; }
+#olympus-split .loading code { max-width: 100%; overflow-wrap: anywhere; font-size: 11px; opacity: .8; }
+#olympus-split .loading button { padding: 4px 12px; border-radius: 6px; cursor: pointer; font: inherit; border: 0;
+  background: var(--primary, Highlight); color: var(--primary-foreground, HighlightText); }
+@keyframes olympus-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { #olympus-split, #olympus-split.off, #olympus-split iframe { transition: none; } }
+#olympus-split .resize { position: absolute; left: 0; top: 0; bottom: 0; width: 8px; cursor: col-resize; z-index: 5; }
 #olympus-split .close { position: absolute; top: 52px; right: 12px; z-index: 5; width: 24px; height: 24px; border: 0;
   border-radius: 6px; cursor: pointer; font-size: 16px; line-height: 1; color: var(--foreground, CanvasText);
   background: color-mix(in srgb, var(--foreground, currentColor) 10%, transparent); }
@@ -71,54 +80,124 @@ ${HEADER} { padding-right: calc(var(--olympus-window-buttons, 0px) + 20px) !impo
   const main = () => document.querySelector('main[data-slot="sidebar-inset"]');
   const base = () => location.origin + location.pathname;
 
+  const WIDTH = "olympus:split-w";
+  const MIN = 320;
+  // the pane's width in px, kept between the chat area's minimum and the window
+  const setWidth = (px) => {
+    const w = Math.round(Math.max(MIN, Math.min(px, innerWidth - 360)));
+    document.documentElement.style.setProperty("--olympus-split-px", w + "px");
+    return w;
+  };
+
   const open = (route) => {
     const m = main();
     if (!m) return;
     let pane = document.getElementById("olympus-split");
-    if (!pane) {
+    if (!pane || pane.classList.contains("off")) {
+      pane?.remove();  // it was closing
+      let saved = 0;
+      try { saved = +localStorage.getItem(WIDTH) || 0; } catch { /* default */ }
+      setWidth(saved || m.getBoundingClientRect().width * 0.45);
       pane = document.createElement("div");
       pane.id = "olympus-split";
-      pane.innerHTML = `<div class="resize" title="Drag to resize"></div><button class="close" title="Close split view">×</button><iframe></iframe>`;
+      pane.className = "off opening";
+      pane.innerHTML = `<div class="resize" title="Drag to resize"></div><button class="close" title="Close split view">×</button>` +
+        `<iframe></iframe><div class="loading"><i></i><span>Opening chat…</span></div>`;
       pane.querySelector(".close").onclick = close;
       pane.querySelector(".resize").onpointerdown = resize;
-    }
-    if (pane.previousElementSibling !== m) m.after(pane);
-    document.documentElement.setAttribute("data-olympus-split", "");
-    if (!pane.sized) {
-      pane.sized = new ResizeObserver(() => document.documentElement.style.setProperty(
-        "--olympus-split-px", pane.getBoundingClientRect().width + "px"));
-      pane.sized.observe(pane);
+      // each time T3 loads in the frame (a reload too), wait for its chat again
+      pane.querySelector("iframe").addEventListener("load", (e) => watch(pane, e.target));
+      document.body.append(pane);
+      document.documentElement.setAttribute("data-olympus-split", "");
+      pane.getBoundingClientRect();  // start off-screen, then slide in
+      pane.classList.remove("opening", "off");
     }
     const frame = pane.querySelector("iframe");
-    if (frame.dataset.route !== route) { frame.dataset.route = route; frame.src = base() + "#/" + route; }
+    if (frame.dataset.route !== route) { frame.dataset.route = route; frame.src = base() + "#/" + route; watch(pane, frame); }
     try { sessionStorage.setItem(KEY, route); } catch { /* not kept */ }
+  };
+  // Show the chat once T3 has drawn it inside the frame: its message box, not just the empty chat
+  // area T3 draws first. If it hasn't after 10 s, say what the frame shows, with a Reload button.
+  const watch = (pane, frame) => {
+    clearInterval(pane.watching);
+    pane.classList.remove("ready");
+    const note = pane.querySelector(".loading");
+    note.className = "loading";
+    note.innerHTML = "<i></i><span>Opening chat…</span>";
+    const started = Date.now();
+    pane.watching = setInterval(() => {
+      let doc = null, why = "";
+      try { doc = frame.contentDocument; } catch (e) { why = "the frame can't be read: " + e.message; }
+      if (doc?.querySelector(`main[data-slot="sidebar-inset"] ${olympus.COMPOSER}`)) {
+        clearInterval(pane.watching);
+        pane.classList.add("ready");
+        return;
+      }
+      if (Date.now() - started < 10000) return;
+      clearInterval(pane.watching);
+      const errors = (frame.contentWindow?.olympusFrameErrors || []).slice(-3);
+      const shown = doc?.querySelector('main[data-slot="sidebar-inset"]')?.innerText.trim().slice(0, 120);
+      why = why || [`address ${doc?.location?.href || frame.src}`, `page ${doc?.readyState || "not loaded"}`,
+                    `${doc?.body?.childElementCount ?? 0} elements`, shown ? `shows "${shown}"` : "chat area empty", ...errors].join(" · ");
+      note.className = "loading failed";
+      note.innerHTML = `<span>This chat didn't open in the split pane.</span><code>${olympus.esc(why)}</code><button>Reload pane</button>`;
+      note.querySelector("button").onclick = () => { frame.src = "about:blank"; setTimeout(() => { frame.src = base() + "#/" + frame.dataset.route; }, 50); };
+    }, 200);
   };
   const close = () => {
     const pane = document.getElementById("olympus-split");
-    pane?.sized?.disconnect();
-    pane?.remove();
-    document.documentElement.removeAttribute("data-olympus-split");
+    if (!pane || pane.classList.contains("off")) return;
+    clearInterval(pane.watching);
     try { sessionStorage.removeItem(KEY); } catch { /* nothing kept */ }
+    const done = () => {
+      if (!pane.isConnected) return;
+      pane.remove();
+      if (!document.getElementById("olympus-split")) document.documentElement.removeAttribute("data-olympus-split");
+    };
+    pane.classList.add("off");  // slides out, then the chat area takes the room back
+    if (matchMedia("(prefers-reduced-motion: reduce)").matches) return done();
+    pane.addEventListener("transitionend", (e) => { if (e.target === pane && e.propertyName === "transform") done(); });
+    setTimeout(done, 450);  // in case the transition never runs
   };
+  // The divider: while you drag, only a thin line follows the pointer (moved by transform, so it
+  // keeps up); the two chats are laid out again once, when you let go.
   const resize = (e) => {
     e.preventDefault();
-    const pane = document.getElementById("olympus-split");
-    const right = pane.getBoundingClientRect().right;
-    document.documentElement.setAttribute("data-olympus-dragging", "");
-    const move = (ev) => pane.style.setProperty("--olympus-split-w", Math.max(320, right - ev.clientX) + "px");
-    const up = () => { document.documentElement.removeAttribute("data-olympus-dragging");
-                       removeEventListener("pointermove", move); removeEventListener("pointerup", up); };
-    addEventListener("pointermove", move);
-    addEventListener("pointerup", up);
+    const handle = e.currentTarget;
+    handle.setPointerCapture(e.pointerId);
+    const guide = Object.assign(document.createElement("div"), { id: "olympus-split-guide" });
+    const left = main()?.getBoundingClientRect().left || 0;
+    const clamp = (x) => Math.max(left + 360, Math.min(x, innerWidth - MIN));
+    let x = clamp(e.clientX), queued = false;
+    const apply = () => { queued = false; guide.style.transform = `translate3d(${x - 1}px, 0, 0)`; };
+    apply();
+    document.body.append(guide);
+    const move = (ev) => { x = clamp(ev.clientX); if (!queued) { queued = true; requestAnimationFrame(apply); } };
+    const up = () => {
+      handle.removeEventListener("pointermove", move);
+      handle.removeEventListener("pointerup", up);
+      handle.removeEventListener("pointercancel", up);
+      guide.remove();
+      const w = setWidth(innerWidth - x);
+      try { localStorage.setItem(WIDTH, w); } catch { /* not kept */ }
+    };
+    handle.addEventListener("pointermove", move);
+    handle.addEventListener("pointerup", up);
+    handle.addEventListener("pointercancel", up);
   };
+  // a smaller window: keep room for the main chat
+  addEventListener("resize", () => {
+    if (!document.getElementById("olympus-split")) return;
+    const w = parseFloat(document.documentElement.style.getPropertyValue("--olympus-split-px"));
+    if (w > innerWidth - 360) setWidth(w);
+  });
 
-  // Dragging a sidebar chat: past a few pixels it becomes a drag. With no split, dropping it on the
-  // chat area opens it beside the current chat. With a split open, the side under the pointer is
-  // outlined ("Replace this chat") and dropping swaps that side's chat; two chats is the most.
-  // Dropping on a message box is left to T3, which adds the chat there as a mention, and the chat
-  // on screen stays. T3 starts the browser's own drag for sidebar chats, so both that and plain
-  // pointer moves are followed; over the pane, the pane's copy of this script reports back.
-  // A plain click still opens the chat as usual.
+  // Dragging a sidebar chat: past a few pixels it becomes a drag (T3 tracks the pointer itself;
+  // it starts no browser drag for these rows). With no split, dropping it on the chat area opens
+  // it beside the current chat. With a split open, the side under the pointer is outlined
+  // ("Replace this chat") and dropping swaps that side's chat; two chats is the most. Over a
+  // message box the outline hugs the box ("Add to message") and dropping adds the chat to it as a
+  // chip (T3 does that itself for some rows; chipAt fills in for the rest). A plain click still opens the chat.
   const zones = () => {
     const m = main()?.getBoundingClientRect();
     if (!m) return [];
@@ -130,42 +209,59 @@ ${HEADER} { padding-right: calc(var(--olympus-window-buttons, 0px) + 20px) !impo
             { hit: p, box: p, label: "Replace this chat", drop: open }];
   };
   const within = (r, x, y) => x > r.left && x < r.left + r.width && y > r.top && y < r.top + r.height;
-  const COMPOSER = '[data-slot="composer-host"]';
-  // is (x, y) on a message box, in the main chat or in the pane?
-  // the message box at (x, y), in the main chat or the pane, as a box in this window's coordinates
-  const composerAt = (x, y) => {
-    const c = main()?.querySelector(COMPOSER)?.getBoundingClientRect();
-    if (c && within(c, x, y)) return c;
+  // the pane's message box, with its box in this window's coordinates
+  const paneComposer = () => {
     const frame = document.querySelector("#olympus-split iframe");
-    const pc = frame?.contentDocument?.querySelector(COMPOSER);
-    if (!pc) return null;
-    const f = frame.getBoundingClientRect(), r = pc.getBoundingClientRect();
-    const box = { left: f.left + r.left, top: f.top + r.top, width: r.width, height: r.height };
-    return within(box, x, y) ? box : null;
+    const host = frame?.contentDocument?.querySelector(olympus.COMPOSER);
+    if (!host) return null;
+    const f = frame.getBoundingClientRect(), r = host.getBoundingClientRect();
+    return { host, box: { left: f.left + r.left, top: f.top + r.top, width: r.width, height: r.height } };
   };
-  // over a message box the outline hugs that box ("Add to message"); dropping there is left to T3
-  // (main box) or chipInPane (pane box), never a replace
+  // the message box at (x, y), in the main chat or the pane
+  const composerAt = (x, y) => {
+    const c = main()?.querySelector(olympus.COMPOSER)?.getBoundingClientRect();
+    if (c && within(c, x, y)) return c;
+    const pc = paneComposer();
+    return pc && within(pc.box, x, y) ? pc.box : null;
+  };
   const targetAt = (x, y) => {
     const box = composerAt(x, y);
     if (box) return { box, label: "Add to message", composer: true, drop: () => {} };
     return zones().find((z) => within(z.hit, x, y)) || null;
   };
-  // T3 adds a chat dropped on the main message box as a chip itself, but its drag lives in this
-  // window, so the pane never sees it: add the same chip there through the pane's own editor
-  const chipInPane = (x, y, route, title) => {
-    const frame = document.querySelector("#olympus-split iframe");
-    const host = frame?.contentDocument?.querySelector(COMPOSER);
-    if (!host) return false;
-    const f = frame.getBoundingClientRect(), r = host.getBoundingClientRect();
-    if (!within({ left: f.left + r.left, top: f.top + r.top, width: r.width, height: r.height }, x, y)) return false;
-    const editor = host.querySelector(".ProseMirror")?.editor;
-    if (!editor) return false;
+  // the chat as a chip in the message box under (x, y), unless T3 already put it there
+  const chipAt = (x, y, route, title) => {
+    const c = main()?.querySelector(olympus.COMPOSER);
+    const pc = paneComposer();
+    const host = c && within(c.getBoundingClientRect(), x, y) ? c : pc && within(pc.box, x, y) ? pc.host : null;
+    const editor = host?.querySelector(".ProseMirror")?.editor;
+    if (!editor) return;
     const id = "thread_" + decodeURIComponent(route.split("/").pop());
-    editor.chain().focus("end").insertContent([
-      { type: "composer-context-reference",
-        attrs: { kind: "thread", contextId: id, label: title, source: `[${title}](t3-context://v1/thread/${id})` } },
-      { type: "text", text: " " }]).run();
-    return true;
+    setTimeout(() => {
+      if (JSON.stringify(editor.getJSON()).includes(`"contextId":"${id}"`)) return;
+      editor.chain().focus("end").insertContent([
+        { type: "composer-context-reference",
+          attrs: { kind: "thread", contextId: id, label: title, source: `[${title}](t3-context://v1/thread/${id})` } },
+        { type: "text", text: " " }]).run();
+    }, 120);
+  };
+  // A sidebar row's chat as a route ("env/thread") and its title. Chat rows carry "env:thread";
+  // rows under a project carry only "true", with the id in their button's test id, so the
+  // environment comes from the open chat or another row.
+  const rowChat = (row) => {
+    const key = row.dataset.threadItem || "";
+    const cut = key.indexOf(":");
+    let env = cut > 0 ? key.slice(0, cut) : "", thread = cut > 0 ? key.slice(cut + 1) : "";
+    if (!thread) {
+      thread = (row.querySelector('[data-testid^="thread-row-"]')?.dataset.testid || "").slice("thread-row-".length);
+      const here = location.hash.replace(/^#\/?/, "").split("/");
+      const other = [...document.querySelectorAll("li[data-thread-item]")].map((r) => r.dataset.threadItem).find((k) => k.includes(":"));
+      env = olympus.threadId() ? here[0] : other ? other.split(":")[0] : "";
+    }
+    if (!env || !thread) return null;
+    const button = row.querySelector('[role="button"]');
+    const title = (button?.getAttribute("aria-label") || button?.innerText.split("\n")[0] || "Chat").split(",")[0].trim();
+    return { route: `${env}/${encodeURIComponent(thread)}`, title };
   };
 
   let drag = null, frameQueued = false;
@@ -182,95 +278,42 @@ ${HEADER} { padding-right: calc(var(--olympus-window-buttons, 0px) + 20px) !impo
   };
   const update = () => {
     frameQueued = false;
-    if (!drag || !drag.on) return;
-    const { x, y } = drag.at;
-    show(targetAt(x, y));
-  };
-  const begin = () => {
-    drag.on = true;
-    drag.zone = Object.assign(document.createElement("div"), { id: "olympus-drop" });
-  };
-  const finish = (drop) => {
-    const d = drag;
-    drag = null;
-    if (!d || !d.on) return;
-    document.documentElement.removeAttribute("data-olympus-dragging");
-    d.zone.remove();
-    if (drop && d.target) d.target.drop(d.route);
-  };
-  // the pane's copy of this script calls these while a chat is dragged over it
-  window.olympusSplitDrag = {
-    active: () => !!(drag && drag.on),
-    overPane: (over) => { if (drag?.on) show(over ? zones()[1] || null : null); },
-    dropOnPane: () => { if (drag?.on) { drag.target = zones()[1] || null; finish(true); } },
+    if (drag?.zone) show(targetAt(drag.at.x, drag.at.y));
   };
 
   addEventListener("pointerdown", (e) => {
     const row = e.button === 0 && e.target.closest("li[data-thread-item]");
-    if (!row) return;
-    const [env, thread] = row.dataset.threadItem.split(":");
-    drag = { x: e.clientX, y: e.clientY, at: { x: e.clientX, y: e.clientY }, on: false,
-             route: `${env}/${encodeURIComponent(thread)}`,
-             title: (row.firstElementChild?.getAttribute("aria-label") || "Chat").split(",")[0] };
+    const chat = row && rowChat(row);
+    if (!chat) return;
+    drag = { x: e.clientX, y: e.clientY, at: { x: e.clientX, y: e.clientY }, zone: null, ...chat };
   }, true);
   addEventListener("pointermove", (e) => {
-    if (!drag || drag.native) return;
+    if (!drag) return;
     drag.at = { x: e.clientX, y: e.clientY };
-    if (!drag.on) {
+    if (!drag.zone) {
       if (Math.hypot(e.clientX - drag.x, e.clientY - drag.y) < 12) return;
-      begin();
+      drag.zone = Object.assign(document.createElement("div"), { id: "olympus-drop" });
       // the pane stops taking the pointer, and nothing gets text-selected, while dragging
       document.documentElement.setAttribute("data-olympus-dragging", "");
       getSelection()?.removeAllRanges();
-      // no label of our own: T3 already shows the chat's name under the pointer
     }
     e.preventDefault();
     if (!frameQueued) { frameQueued = true; requestAnimationFrame(update); }
   }, true);
   addEventListener("pointerup", (e) => {
-    if (!drag || drag.native) return;
-    if (drag.on) {
-      chipInPane(e.clientX, e.clientY, drag.route, drag.title);
-      // the drag ends with a click on whatever is underneath; don't let it open the chat here too
-      const eat = (ev) => { ev.stopPropagation(); ev.preventDefault(); };
-      addEventListener("click", eat, { capture: true, once: true });
-      setTimeout(() => removeEventListener("click", eat, true), 300);
-    }
-    finish(true);
+    const d = drag;
+    drag = null;
+    if (!d?.zone) return;  // a click, not a drag
+    document.documentElement.removeAttribute("data-olympus-dragging");
+    d.zone.remove();
+    chipAt(e.clientX, e.clientY, d.route, d.title);
+    d.target?.drop(d.route);
+    // the drag ends with a click on whatever is underneath; don't let it open the chat here too
+    const eat = (ev) => { ev.stopPropagation(); ev.preventDefault(); };
+    addEventListener("click", eat, { capture: true, once: true });
+    setTimeout(() => removeEventListener("click", eat, true), 300);
   }, true);
 
-  // the browser's own drag, which T3 starts for sidebar chats (it carries the chat as a mention)
-  addEventListener("dragstart", (e) => {
-    const row = e.target.closest?.("li[data-thread-item]");
-    if (!row) return;
-    const [env, thread] = row.dataset.threadItem.split(":");
-    document.documentElement.removeAttribute("data-olympus-dragging");  // the pane must take drops now
-    drag = { route: `${env}/${encodeURIComponent(thread)}`, native: true, on: false };
-    begin();
-  }, true);
-  addEventListener("dragover", (e) => {
-    if (!drag?.native) return;
-    const z = targetAt(e.clientX, e.clientY);
-    show(z);
-    if (z && !z.composer) { e.preventDefault(); e.dataTransfer.dropEffect = "move"; }
-  }, true);
-  addEventListener("drop", (e) => {
-    if (!drag?.native) return;
-    const z = targetAt(e.clientX, e.clientY);
-    if (!z || z.composer) { finish(false); return; }  // on a message box: T3's own drop
-    e.preventDefault();
-    e.stopPropagation();
-    drag.target = z;
-    finish(true);
-  }, true);
-  addEventListener("dragend", () => { if (drag?.native) finish(false); }, true);
-
-
-  // keep the pane next to the chat area (T3 re-renders it) and bring it back after a reload
-  new MutationObserver(() => {
-    const pane = document.getElementById("olympus-split");
-    const m = main();
-    if (pane && m && pane.previousElementSibling !== m) m.after(pane);
-  }).observe(document.documentElement, { childList: true, subtree: true });
+  // bring the pane back after a reload
   try { const route = sessionStorage.getItem(KEY); if (route) setTimeout(() => open(route), 1500); } catch { /* none */ }
 })();

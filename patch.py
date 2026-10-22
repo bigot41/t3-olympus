@@ -19,7 +19,11 @@ CLIENT = ["apps", "server", "dist", "client"]
 LINK = '<link rel="stylesheet" href="/olympus.css" data-olympus>\n  <script src="/olympus.js" defer></script>'
 # A split-view pane (split.js) is T3 in a frame; the desktop app only gives its bridge to the
 # top window, so a frame borrows it before T3's own code starts.
-FRAME = "<script>if (window !== top && !window.desktopBridge) window.desktopBridge = top.desktopBridge;</script>"
+# It also keeps the frame's errors, so split.js can say why a pane stayed blank.
+FRAME = ("<script>if (window !== top) { if (!window.desktopBridge) window.desktopBridge = top.desktopBridge; "
+         "const e = window.olympusFrameErrors = []; "
+         "addEventListener('error', (x) => e.push(String(x.message || x.error || 'failed to load ' + (x.target && (x.target.src || x.target.href)))), true); "
+         "addEventListener('unhandledrejection', (x) => e.push(String((x.reason && x.reason.message) || x.reason))); }</script>")
 OUT = RES / "server.asar.unpacked" / pathlib.Path(*CLIENT)
 GODS = sorted(p.name[:-len("-top.png")] for p in ART.glob("*-top.png"))
 
@@ -78,6 +82,10 @@ BASE = f"""
 }}
 #olympus-toast a {{ text-decoration: underline; }}
 #olympus-toast [data-close] {{ position: absolute; top: 6px; right: 8px; background: none; border: 0; color: inherit; cursor: pointer; font-size: 16px; }}
+#olympus-toast [data-start], #olympus-toast .olympus-ask button {{ margin-top: 8px; padding: 3px 10px; border: 0; border-radius: 6px;
+  cursor: pointer; font: inherit; background: var(--primary, Highlight); color: var(--primary-foreground, HighlightText); }}
+#olympus-toast .olympus-ask {{ display: flex; gap: 6px; }}
+#olympus-toast .olympus-ask [data-deny] {{ background: transparent; color: inherit; border: 1px solid color-mix(in srgb, currentColor 30%, transparent); }}
 """
 
 
@@ -108,10 +116,15 @@ def files():
     start = int(entry["offset"])
     html = data[start:start + entry["size"]].decode("utf-8").replace("</head>", f"  {LINK}\n  </head>", 1)
     html = html.replace("<head>", f"<head>\n    {FRAME}", 1)
+    hook = "<script>" + (HERE / "olympus-hook.js").read_text(encoding="utf-8") + "</script>\n  "
+    html = html.replace('<script type="module"', hook + '<script type="module"', 1)  # runs before T3's own code
     gods = (HERE / "gods.json").read_text(encoding="utf-8") if (HERE / "gods.json").exists() else "{}"
     gods = json.dumps(json.loads(gods))
-    js = ((HERE / "olympus.js").read_text(encoding="utf-8").replace("/*GODS*/ {}", gods)
-          + "".join("\n" + (HERE / f).read_text(encoding="utf-8") for f in ("cards.js", "nextstep.js", "panel.js", "temporary.js", "split.js", "voice.js", "chips.js")))
+    modes = json.dumps({t.stem[len("pantheon-"):]: json.loads(t.read_text(encoding="utf-8"))["appearance"]
+                        for t in sorted((HERE / "themes").glob("pantheon-*.json"))})
+    js = ((HERE / "olympus.js").read_text(encoding="utf-8").replace("/*GODS*/ {}", gods).replace("/*MODES*/ {}", modes)
+          + "".join("\n" + (HERE / f).read_text(encoding="utf-8") for f in
+                    ("cards.js", "turnlogic.js", "turnbox.js", "panel.js", "temporary.js", "split.js", "voice.js", "compact.js")))
     return {"index.html": html, "olympus.css": BASE + "".join(theme_css(g) for g in GODS), "olympus.js": js}
 
 
@@ -130,6 +143,19 @@ def patch():
         node(header, CLIENT)["files"][name] = {"size": len(text.encode()), "unpacked": True}
     write_asar(ASAR, header, data)
     print(f"patched {ASAR} ({len(GODS)} gods)")
+
+
+def refresh():
+    """Rewrite stale files in T3's unpacked UI folder. Works while T3 runs (server.asar is untouched)."""
+    if not is_unpacked():
+        return False
+    wrote = False
+    for name, text in files().items():
+        path = OUT / name
+        if not path.exists() or path.read_text(encoding="utf-8") != text:
+            path.write_text(text, encoding="utf-8")
+            wrote = True
+    return wrote
 
 
 def is_patched():
