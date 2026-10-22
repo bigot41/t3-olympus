@@ -276,18 +276,22 @@ window.olympusAbove = (el) => {
     document.body.append(d);
     d.querySelector("input[name=name]").focus();
   };
+  // in the sidebar's bottom row after Usage, styled like it: the top row is already full and a
+  // fourth icon there squeezes the Search box down to "S"
   const profileButton = () => {
-    const add = document.querySelector('[data-slot="sidebar-inner"] button[aria-label="Add project"]');
-    if (!add || document.getElementById("olympus-profile-button")) return;
+    const usage = document.querySelector('[data-slot="sidebar-inner"] button[aria-label="Usage"]');
+    if (!usage || document.getElementById("olympus-profile-button")) return;
+    const wrap = usage.parentElement.cloneNode(false);
     const b = document.createElement("button");
     b.id = "olympus-profile-button";
     b.type = "button";
-    b.className = add.className;
+    b.className = usage.className;
     b.title = "New profile";
     b.setAttribute("aria-label", "New profile");
     b.innerHTML = PLUS;
     b.onclick = (e) => { e.stopPropagation(); profileDialog(); };
-    add.after(b);
+    wrap.append(b);
+    usage.parentElement.after(wrap);
   };
 
   const tick = () => { apply(); buttons(); profileButton(); };

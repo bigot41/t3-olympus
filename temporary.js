@@ -23,9 +23,11 @@
 #olympus-temp-label svg { flex: none; width: 14px; height: 14px; color: var(--primary, Highlight); }
 #olympus-temp-label b { font-weight: 600; color: var(--foreground, CanvasText); }
 #olympus-temp-label span { overflow: hidden; text-overflow: ellipsis; }
-#olympus-temp-button { display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px;
+#olympus-temp-button { display: inline-flex; align-items: center; justify-content: center; width: 20px; height: 24px; /* narrow: the row is full */
   border-radius: 6px; background: none; border: 0; color: inherit; cursor: pointer; opacity: .8; }
 #olympus-temp-button:hover { opacity: 1; background: color-mix(in srgb, currentColor 10%, transparent); }
+/* the extra button costs the Search box its last letters; its right padding gives them back */
+[data-slot="sidebar-inner"] div:has(> span > input[placeholder="Search"]) { padding-right: 2px !important; }
 #olympus-temp-button[aria-pressed="true"] { opacity: 1; color: var(--primary, Highlight);
   background: color-mix(in srgb, var(--primary, Highlight) 18%, transparent); }
 /* while the button picks a project, T3's chooser stays invisible */
