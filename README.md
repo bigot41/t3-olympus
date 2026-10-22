@@ -16,6 +16,7 @@ Each profile is a T3 project with its own instructions, and opening a chat in it
 - **Send to cloud.** Claude writes a handoff note from the chat, then starts a Claude Code cloud session with it.
 - **Profile cards.** Rest the mouse on a profile in the sidebar for a moment and a card shows what that profile works on, its folders and its latest chats. Haiku writes the summary, and only re-reads a profile when its chats change.
 - **Dictation.** A microphone button that types what you say, using Claude Code's own speech-to-text.
+- **Compact button.** A button in the message box compacts the conversation whenever you want; automatic compaction still runs as usual.
 - **Split view.** Drag a chat onto the chat area to open it side by side.
 - **Temporary chats.** A chat that isn't saved and is deleted when you leave it.
 - **Context and connectors.** The Ctrl+Shift+B tray shows how full the chat's context is and which connectors Claude has.
@@ -165,7 +166,7 @@ T3 serves its interface from `resources/server.asar`. `patch.py` marks the inter
 | `install.py` | One-time setup: themes, config files, shortcuts, Startup entry; `--uninstall` |
 | `launch.pyw` | What the shortcut runs: re-patch if needed, sort chats, start the helper, open T3 |
 | `patch.py` | Adds T3 Olympus to T3, or `--restore` takes it out |
-| `olympus.js`, `cards.js`, `panel.js`, `temporary.js`, `split.js`, `voice.js` | The code that runs inside T3 |
+| `olympus.js`, `cards.js`, `panel.js`, `temporary.js`, `split.js`, `voice.js`, `compact.js` | The code that runs inside T3 |
 | `olympus-hook.js`, `turnlogic.js`, `turnbox.js` | Task list and next-step box: T3's events, the rules, the drawing |
 | `voice.py` | Dictation: streams your microphone to Claude Code's speech-to-text service |
 | `temporary.py` | Temporary chats: the hidden project, file cleanup and database scrub |
