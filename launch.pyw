@@ -14,7 +14,12 @@ running = "T3 Code (Beta).exe" in subprocess.run(
     ["tasklist", "/FI", "IMAGENAME eq T3 Code (Beta).exe", "/NH"],
     capture_output=True, text=True, creationflags=subprocess.CREATE_NO_WINDOW).stdout
 # the archive is locked while T3 runs; patch only when it's closed
-if not running:
+if running:
+    try:
+        patch.refresh()  # the unpacked files can still be updated
+    except BaseException as e:
+        (pathlib.Path(__file__).parent / "launch-error.txt").write_text(repr(e), encoding="utf-8")
+else:
     try:
         if not patch.is_patched():
             patch.patch()

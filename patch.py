@@ -107,7 +107,7 @@ def files():
     gods = (HERE / "gods.json").read_text(encoding="utf-8") if (HERE / "gods.json").exists() else "{}"
     gods = json.dumps(json.loads(gods))
     js = ((HERE / "olympus.js").read_text(encoding="utf-8").replace("/*GODS*/ {}", gods)
-          + "".join("\n" + (HERE / f).read_text(encoding="utf-8") for f in ("cards.js", "nextstep.js", "panel.js")))
+          + "".join("\n" + (HERE / f).read_text(encoding="utf-8") for f in ("cards.js", "turnlogic.js", "nextstep.js", "panel.js")))
     return {"index.html": html, "olympus.css": BASE + "".join(theme_css(g) for g in GODS), "olympus.js": js}
 
 
@@ -126,6 +126,19 @@ def patch():
         node(header, CLIENT)["files"][name] = {"size": len(text.encode()), "unpacked": True}
     write_asar(ASAR, header, data)
     print(f"patched {ASAR} ({len(GODS)} gods)")
+
+
+def refresh():
+    """Rewrite stale files in T3's unpacked UI folder. Works while T3 runs (server.asar is untouched)."""
+    if not is_unpacked():
+        return False
+    wrote = False
+    for name, text in files().items():
+        path = OUT / name
+        if not path.exists() or path.read_text(encoding="utf-8") != text:
+            path.write_text(text, encoding="utf-8")
+            wrote = True
+    return wrote
 
 
 def is_patched():
