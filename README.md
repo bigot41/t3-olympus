@@ -10,7 +10,7 @@ Each profile is a T3 project with its own instructions, and opening a chat in it
 
 ## What you get
 
-- **18 god themes.** Olympus, Hera, Poseidon, Demeter, Athena, Apollo, Artemis, Ares, Aphrodite, Hephaestus, Hestia, Dionysus, Caduceus (Hermes), Hades, Nyx, Helios, Selene and Medusa, in dithered classical marble. Each works in light and dark mode.
+- **18 god themes.** Olympus, Hera, Poseidon, Demeter, Athena, Apollo, Artemis, Ares, Aphrodite, Hephaestus, Hestia, Dionysus, Caduceus (Hermes), Hades, Nyx, Helios, Selene and Medusa, in dithered classical marble. Each is either light or dark, and T3 (including its window buttons) follows it whatever your Windows setting.
 - **One god per profile.** Open a chat in Dev and T3 turns to Hephaestus; open one in Strategy and it turns to Athena. Pick a different god with **Ctrl+Alt+A** while you're in a profile and it becomes that profile's god from then on.
 - **Continue elsewhere.** Keeps the same Claude conversation running in the background with Remote Control, so you can pick it up in Claude desktop, claude.ai or the Claude phone app.
 - **Send to cloud.** Claude writes a handoff note from the chat, then starts a Claude Code cloud session with it.
@@ -102,7 +102,7 @@ It uses Claude Code's own speech-to-text service, signed in with your Claude Cod
 
 ## Split view
 
-Drag a chat from the sidebar onto the chat area and it opens beside the current one, as in Claude desktop. Each side is a full chat with its own message box. Drag the dotted divider to resize it, and × closes it. It comes back if T3 reloads.
+Drag a chat from the sidebar onto the chat area and it opens beside the current one, as in Claude desktop. Two chats side by side is the most: while a split is open, chats can't be dragged. Each side is a full chat with its own message box. Drag the dotted divider to resize it, and × closes it. It comes back if T3 reloads.
 
 The second pane is T3 itself in a frame, so it uses some extra memory while it's open.
 

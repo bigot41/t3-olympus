@@ -1,5 +1,5 @@
 // Split view, like Claude desktop's: drag a chat from the sidebar onto the chat area and it opens
-// beside the current one. The second pane is T3 itself in a frame (patch.py lets frames use the
+// beside the current one (two chats at most: with a split open, chats can't be dragged). The second pane is T3 itself in a frame (patch.py lets frames use the
 // desktop bridge), so it's a full chat with its own composer. Drag the divider to resize; × closes.
 (() => {
   // T3 keeps its toolbar a fixed distance from the window's right edge, leaving room for the
@@ -19,6 +19,9 @@ ${HEADER} { padding-right: calc(var(--olympus-window-buttons, 0px) + 20px) !impo
       const r = o && o.visible ? o.getTitlebarAreaRect() : null;
       const width = r ? Math.max(0, top.innerWidth - (r.x + r.width)) : 0;
       document.documentElement.style.setProperty("--olympus-window-buttons", width + "px");
+      // T3 sizes its top bar from the window's title bar height, which only the main window
+      // knows; without it a pane's bar is 52px instead of 40px and sits out of line
+      if (r) document.documentElement.style.setProperty("--workspace-topbar-height", r.height + "px");
     };
     measure();
     top.navigator.windowControlsOverlay?.addEventListener("geometrychange", measure);
@@ -95,6 +98,8 @@ ${HEADER} { padding-right: calc(var(--olympus-window-buttons, 0px) + 20px) !impo
   // area opens it in the split pane. A plain click still opens the chat as usual.
   let drag = null;
   addEventListener("pointerdown", (e) => {
+    // two chats side by side is the most: with a split open, chats can't be dragged at all
+    if (document.getElementById("olympus-split")) return;
     const row = e.button === 0 && e.target.closest("li[data-thread-item]");
     if (!row) return;
     const [env, thread] = row.dataset.threadItem.split(":");
