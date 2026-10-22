@@ -11,7 +11,8 @@
 
   const style = document.createElement("style");
   style.textContent = `
-li[data-thread-item]:has(> [aria-label$=", ${TITLE}"]) { display: none !important; }
+/* saved temporary chats and unsent temporary drafts alike */
+[data-slot="sidebar-inner"] li:has(> [aria-label$=", ${TITLE}"]) { display: none !important; }
 [data-olympus-hidden] { display: none !important; }
 :root[data-olympus-temporary] [data-slot="composer-host"] { border: 2px dashed var(--primary, currentColor) !important; }
 #olympus-temp-label { order: 0; align-self: flex-start; display: inline-flex; align-items: center; gap: 6px;
@@ -123,7 +124,8 @@ li[data-thread-item]:has(> [aria-label$=", ${TITLE}"]) { display: none !importan
     const name = project();
     const temporary = name === TITLE;
     document.documentElement.toggleAttribute("data-olympus-temporary", temporary);
-    if (name && !temporary) { try { localStorage.setItem(LAST, name); } catch { /* not kept */ } }
+    // remember the last real project, to go back to from a temporary chat
+    if (name && !temporary && name !== "No project") { try { localStorage.setItem(LAST, name); } catch { /* not kept */ } }
     if (current && here.thread !== current) { remove(current); current = null; }
     // only a chat T3's own sidebar lists under Temporary (the project name can change a moment
     // before the address does, so the name alone could point at the chat you just left)

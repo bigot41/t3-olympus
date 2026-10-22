@@ -2,10 +2,27 @@
 // beside the current one. The second pane is T3 itself in a frame (patch.py lets frames use the
 // desktop bridge), so it's a full chat with its own composer. Drag the divider to resize; × closes.
 (() => {
-  if (window !== top) {  // inside a pane: no sidebar, no nested splits
-    const hide = document.createElement("style");
-    hide.textContent = '[data-slot="sidebar"], [data-slot="sidebar-gap"], [data-slot="sidebar-container"] { display: none !important; }';
-    document.head.append(hide);
+  // T3 keeps its toolbar a fixed distance from the window's right edge, leaving room for the
+  // window's own minimize / maximize / close buttons. A pane sits at that edge but can't know
+  // about those buttons, so it takes their width from the main window.
+  const CONTROLS = "[data-workspace-titlebar-controls]";
+  const HEADER = `header:has(> ${CONTROLS})`;
+  if (window !== top) {  // inside a pane: no sidebar, no nested splits, room for the window buttons
+    const css = document.createElement("style");
+    css.textContent = `
+[data-slot="sidebar"], [data-slot="sidebar-gap"], [data-slot="sidebar-container"] { display: none !important; }
+${CONTROLS} { right: calc(var(--olympus-window-buttons, 0px) + 12px) !important; }
+${HEADER} { padding-right: calc(var(--olympus-window-buttons, 0px) + 20px) !important; }`;
+    document.head.append(css);
+    const measure = () => {
+      const o = top.navigator.windowControlsOverlay;
+      const r = o && o.visible ? o.getTitlebarAreaRect() : null;
+      const width = r ? Math.max(0, top.innerWidth - (r.x + r.width)) : 0;
+      document.documentElement.style.setProperty("--olympus-window-buttons", width + "px");
+    };
+    measure();
+    top.navigator.windowControlsOverlay?.addEventListener("geometrychange", measure);
+    top.addEventListener("resize", measure);
     return;
   }
   const KEY = "olympus:split";
@@ -18,6 +35,9 @@
 #olympus-split .close { position: absolute; top: 52px; right: 12px; z-index: 5; width: 24px; height: 24px; border: 0;
   border-radius: 6px; cursor: pointer; font-size: 16px; line-height: 1; color: var(--foreground, CanvasText);
   background: color-mix(in srgb, var(--foreground, currentColor) 10%, transparent); }
+/* with a split open, the main chat's toolbar belongs at the main chat's edge, not the window's */
+:root[data-olympus-split] ${CONTROLS} { right: calc(var(--olympus-split-px) + 12px) !important; }
+:root[data-olympus-split] ${HEADER} { padding-right: 20px !important; }
 #olympus-drop { position: fixed; z-index: 9998; pointer-events: none; border-radius: 10px;
   border: 2px dashed var(--primary, Highlight); background: color-mix(in srgb, var(--primary, Highlight) 12%, transparent);
   display: flex; align-items: center; justify-content: center; font-size: 14px; color: var(--foreground, CanvasText); }
@@ -42,12 +62,21 @@
       pane.querySelector(".resize").onpointerdown = resize;
     }
     if (pane.previousElementSibling !== m) m.after(pane);
+    document.documentElement.setAttribute("data-olympus-split", "");
+    if (!pane.sized) {
+      pane.sized = new ResizeObserver(() => document.documentElement.style.setProperty(
+        "--olympus-split-px", pane.getBoundingClientRect().width + "px"));
+      pane.sized.observe(pane);
+    }
     const frame = pane.querySelector("iframe");
     if (frame.dataset.route !== route) { frame.dataset.route = route; frame.src = base() + "#/" + route; }
     try { sessionStorage.setItem(KEY, route); } catch { /* not kept */ }
   };
   const close = () => {
-    document.getElementById("olympus-split")?.remove();
+    const pane = document.getElementById("olympus-split");
+    pane?.sized?.disconnect();
+    pane?.remove();
+    document.documentElement.removeAttribute("data-olympus-split");
     try { sessionStorage.removeItem(KEY); } catch { /* nothing kept */ }
   };
   const resize = (e) => {
