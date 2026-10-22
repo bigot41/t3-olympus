@@ -19,7 +19,11 @@ CLIENT = ["apps", "server", "dist", "client"]
 LINK = '<link rel="stylesheet" href="/olympus.css" data-olympus>\n  <script src="/olympus.js" defer></script>'
 # A split-view pane (split.js) is T3 in a frame; the desktop app only gives its bridge to the
 # top window, so a frame borrows it before T3's own code starts.
-FRAME = "<script>if (window !== top && !window.desktopBridge) window.desktopBridge = top.desktopBridge;</script>"
+# It also keeps the frame's errors, so split.js can say why a pane stayed blank.
+FRAME = ("<script>if (window !== top) { if (!window.desktopBridge) window.desktopBridge = top.desktopBridge; "
+         "const e = window.olympusFrameErrors = []; "
+         "addEventListener('error', (x) => e.push(String(x.message || x.error || 'failed to load ' + (x.target && (x.target.src || x.target.href)))), true); "
+         "addEventListener('unhandledrejection', (x) => e.push(String((x.reason && x.reason.message) || x.reason))); }</script>")
 OUT = RES / "server.asar.unpacked" / pathlib.Path(*CLIENT)
 GODS = sorted(p.name[:-len("-top.png")] for p in ART.glob("*-top.png"))
 

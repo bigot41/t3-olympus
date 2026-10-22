@@ -33,7 +33,28 @@ ${HEADER} { padding-right: calc(var(--olympus-window-buttons, 0px) + 20px) !impo
   style.textContent = `
 #olympus-split { position: relative; flex: 0 0 var(--olympus-split-w, 45%); min-width: 320px; display: flex;
   border-left: 1px dotted color-mix(in srgb, var(--foreground, currentColor) 35%, transparent); }
-#olympus-split iframe { flex: 1; border: 0; width: 100%; height: 100svh; background: var(--background, Canvas); }
+#olympus-split iframe { flex: 1; border: 0; width: 100%; height: 100svh; background: var(--background, Canvas);
+  opacity: 0; transform: translate3d(18px, 0, 0) scale(.985); transform-origin: left center;
+  transition: opacity .35s ease-out, transform .55s cubic-bezier(.2, .9, .25, 1.05); }
+/* the pane slides open from the divider; the chat fades in once T3 has drawn it inside */
+#olympus-split { overflow: hidden; animation: olympus-split-in .5s cubic-bezier(.22, 1, .36, 1); }
+#olympus-split.ready iframe { opacity: 1; transform: none; }
+#olympus-split.closing { animation: olympus-split-out .32s cubic-bezier(.4, 0, .9, .6) forwards; pointer-events: none; }
+@keyframes olympus-split-in { from { flex-basis: 0; min-width: 0; opacity: .4; } }
+@keyframes olympus-split-out { to { flex-basis: 0; min-width: 0; opacity: 0; } }
+#olympus-split .loading { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center;
+  justify-content: center; gap: 10px; padding: 24px; text-align: center; font-size: 13px; pointer-events: none;
+  color: color-mix(in srgb, var(--foreground, CanvasText) 70%, transparent); transition: opacity .3s; }
+#olympus-split.ready .loading { opacity: 0; }
+#olympus-split .loading i { width: 18px; height: 18px; border-radius: 50%; animation: olympus-spin .8s linear infinite;
+  border: 2px solid color-mix(in srgb, var(--primary, Highlight) 30%, transparent); border-top-color: var(--primary, Highlight); }
+#olympus-split .loading.failed { pointer-events: auto; }
+#olympus-split .loading.failed i { display: none; }
+#olympus-split .loading code { max-width: 100%; overflow-wrap: anywhere; font-size: 11px; opacity: .8; }
+#olympus-split .loading button { padding: 4px 12px; border-radius: 6px; cursor: pointer; font: inherit; border: 0;
+  background: var(--primary, Highlight); color: var(--primary-foreground, HighlightText); }
+@keyframes olympus-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { #olympus-split, #olympus-split iframe { animation: none; transition: none; } }
 #olympus-split .resize { position: absolute; left: -4px; top: 0; bottom: 0; width: 8px; cursor: col-resize; z-index: 5; }
 #olympus-split .close { position: absolute; top: 52px; right: 12px; z-index: 5; width: 24px; height: 24px; border: 0;
   border-radius: 6px; cursor: pointer; font-size: 16px; line-height: 1; color: var(--foreground, CanvasText);
@@ -60,10 +81,12 @@ ${HEADER} { padding-right: calc(var(--olympus-window-buttons, 0px) + 20px) !impo
     if (!pane) {
       pane = document.createElement("div");
       pane.id = "olympus-split";
-      pane.innerHTML = `<div class="resize" title="Drag to resize"></div><button class="close" title="Close split view">×</button><iframe></iframe>`;
+      pane.innerHTML = `<div class="resize" title="Drag to resize"></div><button class="close" title="Close split view">×</button>` +
+        `<iframe></iframe><div class="loading"><i></i><span>Opening chat…</span></div>`;
       pane.querySelector(".close").onclick = close;
       pane.querySelector(".resize").onpointerdown = resize;
     }
+    pane.classList.remove("closing");
     if (pane.previousElementSibling !== m) m.after(pane);
     document.documentElement.setAttribute("data-olympus-split", "");
     if (!pane.sized) {
@@ -72,15 +95,51 @@ ${HEADER} { padding-right: calc(var(--olympus-window-buttons, 0px) + 20px) !impo
       pane.sized.observe(pane);
     }
     const frame = pane.querySelector("iframe");
-    if (frame.dataset.route !== route) { frame.dataset.route = route; frame.src = base() + "#/" + route; }
+    if (frame.dataset.route !== route) { frame.dataset.route = route; frame.src = base() + "#/" + route; watch(pane, frame); }
     try { sessionStorage.setItem(KEY, route); } catch { /* not kept */ }
+  };
+  // Show the chat once T3 has drawn it inside the frame. If it hasn't after 10 s, say what the
+  // frame reports instead of leaving the pane blank, with a Reload button.
+  const watch = (pane, frame) => {
+    clearInterval(pane.watching);
+    pane.classList.remove("ready");
+    const note = pane.querySelector(".loading");
+    note.className = "loading";
+    note.innerHTML = "<i></i><span>Opening chat…</span>";
+    const started = Date.now();
+    pane.watching = setInterval(() => {
+      let doc = null, why = "";
+      try { doc = frame.contentDocument; } catch (e) { why = "the frame can't be read: " + e.message; }
+      if (doc?.querySelector('main[data-slot="sidebar-inset"]')) {
+        clearInterval(pane.watching);
+        pane.classList.add("ready");
+        return;
+      }
+      if (Date.now() - started < 10000) return;
+      clearInterval(pane.watching);
+      const errors = (frame.contentWindow?.olympusFrameErrors || []).slice(-3);
+      why = why || [`address ${doc?.location?.href || frame.src}`, `page ${doc?.readyState || "not loaded"}`,
+                    `${doc?.body?.childElementCount ?? 0} elements`, ...errors].join(" · ");
+      note.className = "loading failed";
+      note.innerHTML = `<span>This chat didn't open in the split pane.</span><code>${olympus.esc(why)}</code><button>Reload pane</button>`;
+      note.querySelector("button").onclick = () => { frame.src = "about:blank"; setTimeout(() => { frame.src = base() + "#/" + frame.dataset.route; watch(pane, frame); }, 50); };
+    }, 200);
   };
   const close = () => {
     const pane = document.getElementById("olympus-split");
-    pane?.sized?.disconnect();
-    pane?.remove();
-    document.documentElement.removeAttribute("data-olympus-split");
+    if (!pane || pane.classList.contains("closing")) return;
+    clearInterval(pane.watching);
     try { sessionStorage.removeItem(KEY); } catch { /* nothing kept */ }
+    const done = () => {
+      if (!pane.classList.contains("closing") && !matchMedia("(prefers-reduced-motion: reduce)").matches) return;  // reopened meanwhile
+      pane.sized?.disconnect();
+      pane.remove();
+      document.documentElement.removeAttribute("data-olympus-split");
+    };
+    if (matchMedia("(prefers-reduced-motion: reduce)").matches) return done();
+    pane.classList.add("closing");  // slides shut, then goes
+    pane.addEventListener("animationend", (e) => { if (e.target === pane) done(); });
+    setTimeout(done, 500);  // in case the animation never runs
   };
   const resize = (e) => {
     e.preventDefault();
