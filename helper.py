@@ -15,7 +15,7 @@ config.json's buttons_show_in picks which T3 projects show the buttons ("all" or
 """
 import glob, json, os, re, socket, sqlite3, subprocess, sys, threading, time, urllib.parse
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-import cards_build, temporary, voice
+import cards_build, new_profile, temporary, voice
 from organize import CONFIG
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -234,6 +234,13 @@ def voice_post(path, data):
     raise ValueError("not found")
 
 
+def make_profile(body):
+    """POST /profile from the New profile button: new_profile.make_profile, plus the updated god map."""
+    result = new_profile.make_profile(str(body.get("name", "")), body.get("god") or None,
+                                      str(body.get("about", "")), bool(body.get("agent")))
+    return {**result, "gods": gods()}
+
+
 def gods():
     if not os.path.exists(GODS):
         return {}
@@ -296,6 +303,8 @@ class Handler(BaseHTTPRequestHandler):
             return self.reply(200, {"show_in": CONFIG.get("buttons_show_in", "all")})
         if self.path == "/gods":
             return self.reply(200, gods())
+        if self.path == "/gods/themes":  # the gods a profile can have, for the New profile dialog
+            return self.reply(200, new_profile.gods_available())
         if self.path == "/temporary":  # the project, and leftover chats to delete
             return self.reply(200, {"title": temporary.TITLE, "ready": temporary.ensure() is not None,
                                     "threads": temporary.threads()})
@@ -318,7 +327,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self.reply(400, {"error": str(e)})
         action = {"/continue": lambda b: continue_elsewhere(str(b["thread"])),
                   "/cloud": lambda b: send_to_cloud(str(b["thread"])), "/gods": set_god,
-                  "/temporary/leaving": temporary_leaving, "/temporary/purge": temporary_purge}.get(self.path)
+                  "/temporary/leaving": temporary_leaving, "/temporary/purge": temporary_purge,
+                  "/profile": make_profile}.get(self.path)
         if not action:
             return self.reply(404, {"error": "not found"})
         try:
@@ -334,7 +344,7 @@ def running():
 
 
 STAMP = os.path.join(HERE, "local", "helper.json")  # the running helper's code version
-CODE = ("helper.py", "voice.py", "temporary.py", "organize.py", "cards_build.py")
+CODE = ("helper.py", "voice.py", "temporary.py", "organize.py", "cards_build.py", "new_profile.py", "wrapup_mcp.py")
 
 
 if __name__ == "__main__":

@@ -200,7 +200,97 @@ window.olympusAbove = (el) => {
     workspace.after(section);
   };
 
-  const tick = () => { apply(); buttons(); };
+  // The god map: the copy baked in by patch.py, then the helper's gods.json, so a profile made
+  // with the New profile button gets its god straight away.
+  const loadGods = (map) => {
+    Object.keys(GODS).forEach((k) => delete GODS[k]);
+    Object.assign(GODS, map);
+    lastProject = null;  // apply again
+    tick();
+  };
+  fetch(HELPER + "/gods").then((r) => r.json()).then(loadGods).catch(() => {});
+
+  // New profile: a "+" after T3's Add project button opens a small dialog; the helper makes it.
+  const PLUS = svg('<path d="M5 12h14"/><path d="M12 5v14"/>');
+  const dialogStyle = document.createElement("style");
+  dialogStyle.textContent = `
+#olympus-new-profile { position: fixed; inset: 0; z-index: 9998; display: flex; align-items: center; justify-content: center;
+  background: rgb(0 0 0 / .35); }
+#olympus-new-profile form { width: 340px; padding: 16px 18px; border-radius: 10px; display: flex; flex-direction: column; gap: 10px;
+  font-size: 13px; background: var(--popover, Canvas); color: var(--foreground, CanvasText);
+  border: 1px dotted color-mix(in srgb, var(--primary, currentColor) 70%, transparent); box-shadow: 0 8px 24px rgb(0 0 0 / .35); }
+#olympus-new-profile label { display: flex; flex-direction: column; gap: 4px; }
+#olympus-new-profile label.check { flex-direction: row; align-items: center; gap: 8px; }
+#olympus-new-profile input:not([type]), #olympus-new-profile input[name], #olympus-new-profile select {
+  font: inherit; color: inherit; padding: 5px 8px; border-radius: 6px; background: var(--background, Canvas);
+  border: 1px solid color-mix(in srgb, currentColor 25%, transparent); }
+#olympus-new-profile input[type=checkbox] { width: auto; }
+#olympus-new-profile .row { display: flex; justify-content: flex-end; gap: 6px; }
+#olympus-new-profile button { padding: 4px 12px; border-radius: 6px; cursor: pointer; font: inherit; color: inherit;
+  background: transparent; border: 1px solid color-mix(in srgb, currentColor 30%, transparent); }
+#olympus-new-profile button.primary { background: var(--primary, Highlight); color: var(--primary-foreground, HighlightText); border-color: transparent; }`;
+  document.head.append(dialogStyle);
+  const profileDialog = async () => {
+    if (document.getElementById("olympus-new-profile")) return;
+    let themes = [];
+    try { themes = await (await fetch(HELPER + "/gods/themes")).json(); } catch { return failed(new TypeError()); }
+    const d = document.createElement("div");
+    d.id = "olympus-new-profile";
+    d.innerHTML = `<form><b>New profile</b>
+      <label>Name <input name="name" required pattern="[A-Za-z0-9][A-Za-z0-9-]*" placeholder="gamedev" autocomplete="off"></label>
+      <label>God <select name="god"><option value="">Pick later (Ctrl+Alt+A)</option>${themes.map((g) =>
+        `<option value="${esc(g)}">${esc(g === "mars" ? "Ares (mars)" : g[0].toUpperCase() + g.slice(1))}</option>`).join("")}</select></label>
+      <label>What it works on <input name="about" placeholder="Unity games and level design" autocomplete="off"></label>
+      <label class="check"><input type="checkbox" name="agent"> Let other chats hand work to it</label>
+      <div class="row"><button type="button" data-cancel>Cancel</button><button type="submit" class="primary">Create</button></div></form>`;
+    const close = () => d.remove();
+    d.querySelector("[data-cancel]").onclick = close;
+    d.addEventListener("keydown", (e) => { if (e.key === "Escape") close(); });
+    d.querySelector("form").onsubmit = async (e) => {
+      e.preventDefault();
+      const f = new FormData(e.target);
+      const create = e.target.querySelector("button[type=submit]");
+      create.disabled = true;
+      create.textContent = "Creating…";  // registering its tools with Claude Code takes a few seconds
+      try {
+        const res = await post("/profile", { name: f.get("name"), god: f.get("god"), about: f.get("about"), agent: f.get("agent") === "on" });
+        close();
+        loadGods(res.gods);
+        // the sidebar lists chats, so an empty profile isn't there yet; T3's project chooser has it
+        toast(res.messages.map(esc).join("<br>") + (res.added ? '<br><button data-start>Start a chat in it</button>' : ""), true);
+        document.querySelector("#olympus-toast [data-start]")?.addEventListener("click", async () => {
+          document.getElementById("olympus-toast")?.remove();
+          document.querySelector('button[aria-label="New thread"]')?.click();
+          for (let i = 0; i < 30; i++) {
+            await new Promise((r) => setTimeout(r, 100));
+            const o = [...document.querySelectorAll('[role="option"]')].find((x) => x.innerText.split(/\n/).some((l) => l.trim() === res.title));
+            if (o) { o.click(); break; }
+          }
+        });
+      } catch (err) {
+        create.disabled = false;
+        create.textContent = "Create";
+        failed(err);
+      }
+    };
+    document.body.append(d);
+    d.querySelector("input[name=name]").focus();
+  };
+  const profileButton = () => {
+    const add = document.querySelector('[data-slot="sidebar-inner"] button[aria-label="Add project"]');
+    if (!add || document.getElementById("olympus-profile-button")) return;
+    const b = document.createElement("button");
+    b.id = "olympus-profile-button";
+    b.type = "button";
+    b.className = add.className;
+    b.title = "New profile";
+    b.setAttribute("aria-label", "New profile");
+    b.innerHTML = PLUS;
+    b.onclick = (e) => { e.stopPropagation(); profileDialog(); };
+    add.after(b);
+  };
+
+  const tick = () => { apply(); buttons(); profileButton(); };
   tick();
   new MutationObserver(() => {
     if (!queued) { queued = true; requestAnimationFrame(tick); }
