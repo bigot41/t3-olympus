@@ -121,6 +121,36 @@ def wrap_up_card(thread):
     return card
 
 
+connectors_cache = {}  # folder -> (time, list), since claude mcp list takes a few seconds
+
+
+def session_info(thread):
+    """Context use (as T3 recorded it) and the MCP servers Claude sees in the chat's folder."""
+    con = sqlite3.connect(f"file:{DB}?mode=ro", uri=True)
+    try:
+        row = con.execute("select payload_json from orchestration_v2_projection_provider_threads where thread_id = ?",
+                          (thread,)).fetchone()
+        # T3 doesn't always store the chat's figure; every turn has one, so fall back to the latest
+        turn = con.execute("select payload_json from orchestration_v2_projection_provider_turns where thread_id = ? "
+                           "order by ordinal desc limit 1", (thread,)).fetchone()
+    finally:
+        con.close()
+    context = ((json.loads(row[0]).get("contextUsage") if row else None)
+               or (json.loads(turn[0]).get("tokenUsage") if turn else None) or {})
+    context = {k: context.get(k) for k in ("usedTokens", "maxTokens")}
+    try:
+        cwd = session_for(thread)[1]
+    except ValueError:
+        return {"context": context, "connectors": []}
+    when, found = connectors_cache.get(cwd, (0, None))
+    if found is None or time.time() - when > 120:
+        out = claude("mcp", "list", cwd=cwd).stdout
+        found = [{"name": m.group(1), "ok": "✔" in m.group(2), "status": m.group(2).lstrip("✔✗! ").strip()}
+                 for m in re.finditer(r"^(.+?): .* - (.+)$", out, re.M)]
+        connectors_cache[cwd] = (time.time(), found)
+    return {"context": context, "connectors": found}
+
+
 def gods():
     if not os.path.exists(GODS):
         return {}
@@ -183,6 +213,8 @@ class Handler(BaseHTTPRequestHandler):
             return self.reply(200, {"show_in": CONFIG.get("buttons_show_in", "all")})
         if self.path == "/gods":
             return self.reply(200, gods())
+        if self.path.startswith("/session?thread="):
+            return self.reply(200, session_info(urllib.parse.unquote(self.path.split("=", 1)[1])))
         if self.path.startswith("/wrapup?thread="):
             return self.reply(200, wrap_up_card(urllib.parse.unquote(self.path.split("=", 1)[1])))
         if self.path.startswith("/card?name="):
