@@ -176,16 +176,26 @@ window.olympusAbove = (el) => {
     if (!keep) t.timer = setTimeout(() => t.remove(), 6000);
   };
 
-  const call = async (path, label) => {
+  const call = async (path, label, allow) => {
     const thread = threadId();
     if (!thread) return;
     toast(label + "…", true);
-    try { return await post(path, { thread }); } catch (e) { failed(e); }
+    try { return await post(path, { thread, allow }); } catch (e) { failed(e); }
   };
 
-  const continueElsewhere = async () => {
-    const res = await call("/continue", "Starting Remote Control");
+  const continueElsewhere = async (allow) => {
+    const res = await call("/continue", "Starting Remote Control", allow === true);
     if (!res) return;
+    if (res.trust) {  // Claude Code wants this folder trusted first: ask here, not in a terminal
+      toast(`<b>Allow Remote Control in this folder?</b><br><code>${esc(res.trust)}</code><br>` +
+            "Sessions started from your phone or claude.ai can read, edit and run files here, and this " +
+            "folder's settings (hooks, MCP servers, permissions) apply to them. Only allow it for a folder you trust." +
+            '<div class="olympus-ask"><button data-allow>Allow</button><button data-deny>Not now</button></div>', true);
+      const t = document.getElementById("olympus-toast");
+      t.querySelector("[data-allow]").onclick = () => continueElsewhere(true);
+      t.querySelector("[data-deny]").onclick = () => t.remove();
+      return;
+    }
     const link = res.url ? `<a href="${esc(res.url)}" target="_blank">${esc(res.url)}</a>`
                          : "Open Remote Control in Claude desktop or the Claude phone app.";
     toast(`<b>${esc(res.title)}</b> is running in the background with Remote Control.<br>${link}<br>` +
@@ -246,7 +256,7 @@ window.olympusAbove = (el) => {
   };
   fetch(HELPER + "/gods").then((r) => r.json()).then(loadGods).catch(() => {});
 
-  // New profile: a "+" after T3's Add project button opens a small dialog; the helper makes it.
+  // New profile: a button above the sidebar's bottom row opens a small dialog; the helper makes it.
   const PLUS = svg('<path d="M5 12h14"/><path d="M12 5v14"/>');
   const dialogStyle = document.createElement("style");
   dialogStyle.textContent = `
@@ -264,6 +274,10 @@ window.olympusAbove = (el) => {
 #olympus-new-profile .row { display: flex; justify-content: flex-end; gap: 6px; }
 #olympus-new-profile button { padding: 4px 12px; border-radius: 6px; cursor: pointer; font: inherit; color: inherit;
   background: transparent; border: 1px solid color-mix(in srgb, currentColor 30%, transparent); }
+#olympus-profile-button { display: flex; align-items: center; gap: 8px; margin: 2px var(--sidebar-content-inset, 8px) 0;
+  padding: 6px 8px; border-radius: 8px; border: 1px dashed color-mix(in srgb, var(--primary, currentColor) 55%, transparent);
+  background: transparent; color: var(--sidebar-foreground, inherit); font: inherit; font-size: 13px; cursor: pointer; text-align: left; }
+#olympus-profile-button:hover { background: color-mix(in srgb, var(--primary, Highlight) 12%, transparent); }
 #olympus-new-profile button.primary { background: var(--primary, Highlight); color: var(--primary-foreground, HighlightText); border-color: transparent; }`;
   document.head.append(dialogStyle);
   const profileDialog = async () => {
@@ -307,22 +321,21 @@ window.olympusAbove = (el) => {
     document.body.append(d);
     d.querySelector("input[name=name]").focus();
   };
-  // in the sidebar's bottom row after Usage, styled like it: the top row is already full and a
-  // fourth icon there squeezes the Search box down to "S"
+  // its own labelled row just above the sidebar's bottom row (Settings, Usage), so it's easy to find;
+  // a "+" icon among those got missed
   const profileButton = () => {
-    const usage = document.querySelector('[data-slot="sidebar-inner"] button[aria-label="Usage"]');
-    if (!usage || document.getElementById("olympus-profile-button")) return;
-    const wrap = usage.parentElement.cloneNode(false);
+    const footers = document.querySelectorAll('[data-slot="sidebar-inner"] [data-slot="sidebar-footer"]');
+    const footer = footers[footers.length - 1];
+    const mine = document.getElementById("olympus-profile-button");
+    if (!footer || (mine && mine.nextElementSibling === footer)) return;
+    mine?.remove();
     const b = document.createElement("button");
     b.id = "olympus-profile-button";
     b.type = "button";
-    b.className = usage.className;
-    b.title = "New profile";
-    b.setAttribute("aria-label", "New profile");
-    b.innerHTML = PLUS;
+    b.title = "Make a new profile (agent) with its own folder and god";
+    b.innerHTML = PLUS + "<span>New profile</span>";
     b.onclick = (e) => { e.stopPropagation(); profileDialog(); };
-    wrap.append(b);
-    usage.parentElement.after(wrap);
+    footer.before(b);
   };
 
   const tick = () => { apply(); buttons(); profileButton(); };

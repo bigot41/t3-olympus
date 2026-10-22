@@ -84,7 +84,25 @@ def remote_url(bg_id, wait=30):
     return None
 
 
-def continue_elsewhere(thread):
+CLAUDE_JSON = os.path.join(HOME, ".claude.json")
+UNTRUSTED = re.compile(r"Workspace not trusted\. Run `claude` in (.+?) once")
+
+
+def trust(folder):
+    """Mark a folder trusted for Claude Code, as accepting its trust prompt does. Remote Control
+    checks the folder itself (or its git repo), not the folders above it."""
+    with open(CLAUDE_JSON, encoding="utf-8") as f:
+        data = json.load(f)
+    key = folder.strip().replace("\\", "/")
+    data.setdefault("projects", {}).setdefault(key, {})["hasTrustDialogAccepted"] = True
+    tmp = CLAUDE_JSON + ".olympus-tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
+        json.dump(data, f, indent=2)
+    os.replace(tmp, CLAUDE_JSON)
+
+
+def continue_elsewhere(thread, allow=False):
+    """allow: you agreed in T3 to trust the folder an earlier try asked about ("trust" in the reply)."""
     sid, cwd, title = session_for(thread)
     # already handed over: reuse that background session instead of starting another
     try:
@@ -96,7 +114,14 @@ def continue_elsewhere(thread):
     if bg:
         bg_id = bg["id"]
     else:
-        out = claude("--bg", "--resume", sid, "--remote-control", title[:60], cwd=cwd)
+        start = lambda: claude("--bg", "--resume", sid, "--remote-control", title[:60], cwd=cwd)
+        out = start()
+        untrusted = UNTRUSTED.search(out.stderr + out.stdout)
+        if untrusted and not allow:  # T3 asks you, then calls again with allow
+            return {"trust": untrusted.group(1).strip(), "title": title}
+        if untrusted:
+            trust(untrusted.group(1))
+            out = start()
         m = re.search(r"backgrounded\s*\W\s*(\w+)", out.stdout)
         if not m:
             raise ValueError("claude --bg failed: " + (out.stderr or out.stdout).strip()[-400:])
@@ -337,7 +362,7 @@ class Handler(BaseHTTPRequestHandler):
                 return self.reply(200, voice_post(self.path, data))
             except Exception as e:  # shown to you in T3
                 return self.reply(400, {"error": str(e)})
-        action = {"/continue": lambda b: continue_elsewhere(str(b["thread"])),
+        action = {"/continue": lambda b: continue_elsewhere(str(b["thread"]), b.get("allow") is True),
                   "/cloud": lambda b: send_to_cloud(str(b["thread"])), "/gods": set_god,
                   "/temporary/leaving": temporary_leaving, "/temporary/purge": temporary_purge,
                   "/profile": make_profile}.get(self.path)

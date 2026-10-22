@@ -90,5 +90,43 @@ class TurnCalls(unittest.TestCase):
             self.assertEqual(helper.turn_state("x"), {"items": [], "run": None})
 
 
+class ContinueTrust(unittest.TestCase):
+    """Continue elsewhere in a folder Claude Code doesn't trust: ask first, trust only that folder, retry."""
+    NO = mock.Mock(stdout="", stderr=r"Workspace not trusted. Run `claude` in C:\work\repo once and accept the trust prompt, then retry.")
+    OK = mock.Mock(stdout="backgrounded · ab12cd34 (idle)", stderr="")
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.cfg = os.path.join(self.tmp.name, ".claude.json")
+        with open(self.cfg, "w", encoding="utf-8") as f:
+            json.dump({"projects": {"C:/other": {"x": 1}}}, f)
+        for p in (mock.patch.object(helper, "CLAUDE_JSON", self.cfg),
+                  mock.patch.object(helper, "session_for", return_value=("s1", "C:/work/repo", "Chat")),
+                  mock.patch.object(helper, "remote_url", return_value=None)):
+            p.start()
+            self.addCleanup(p.stop)
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def run_with(self, allow, *outs):
+        agents = mock.Mock(stdout="[]")
+        with mock.patch.object(helper, "claude", side_effect=[agents, *outs]) as c:
+            return helper.continue_elsewhere("t1", allow), c
+
+    def test_asks_before_trusting(self):
+        res, _ = self.run_with(False, self.NO)
+        self.assertEqual(res["trust"], r"C:\work\repo")
+        self.assertNotIn("C:/work/repo", json.loads(open(self.cfg, encoding="utf-8").read())["projects"])
+
+    def test_allow_trusts_the_named_folder_and_retries(self):
+        res, c = self.run_with(True, self.NO, self.OK)
+        self.assertEqual(res["id"], "ab12cd34")
+        self.assertEqual(c.call_count, 3)
+        projects = json.loads(open(self.cfg, encoding="utf-8").read())["projects"]
+        self.assertTrue(projects["C:/work/repo"]["hasTrustDialogAccepted"])
+        self.assertEqual(projects["C:/other"], {"x": 1})
+
+
 if __name__ == "__main__":
     unittest.main()

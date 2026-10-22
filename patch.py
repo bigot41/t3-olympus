@@ -82,8 +82,10 @@ BASE = f"""
 }}
 #olympus-toast a {{ text-decoration: underline; }}
 #olympus-toast [data-close] {{ position: absolute; top: 6px; right: 8px; background: none; border: 0; color: inherit; cursor: pointer; font-size: 16px; }}
-#olympus-toast [data-start] {{ margin-top: 8px; padding: 3px 10px; border: 0; border-radius: 6px; cursor: pointer; font: inherit;
-  background: var(--primary, Highlight); color: var(--primary-foreground, HighlightText); }}
+#olympus-toast [data-start], #olympus-toast .olympus-ask button {{ margin-top: 8px; padding: 3px 10px; border: 0; border-radius: 6px;
+  cursor: pointer; font: inherit; background: var(--primary, Highlight); color: var(--primary-foreground, HighlightText); }}
+#olympus-toast .olympus-ask {{ display: flex; gap: 6px; }}
+#olympus-toast .olympus-ask [data-deny] {{ background: transparent; color: inherit; border: 1px solid color-mix(in srgb, currentColor 30%, transparent); }}
 """
 
 
