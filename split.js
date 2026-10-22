@@ -26,6 +26,24 @@ ${HEADER} { padding-right: calc(var(--olympus-window-buttons, 0px) + 20px) !impo
     measure();
     top.navigator.windowControlsOverlay?.addEventListener("geometrychange", measure);
     top.addEventListener("resize", measure);
+    // a chat dragged from the main window's sidebar over this pane: outside the message box it
+    // replaces this pane's chat; on the message box T3 does its own drop (a mention of the chat)
+    const inBox = (e) => document.elementFromPoint(e.clientX, e.clientY)?.closest('[data-slot="composer-host"]');
+    addEventListener("dragover", (e) => {
+      const d = top.olympusSplitDrag;
+      if (!d?.active()) return;
+      const box = inBox(e);
+      d.overPane(!box);
+      if (!box) e.preventDefault();
+    }, true);
+    addEventListener("dragleave", () => top.olympusSplitDrag?.overPane(false), true);
+    addEventListener("drop", (e) => {
+      const d = top.olympusSplitDrag;
+      if (!d?.active() || inBox(e)) return;
+      e.preventDefault();
+      e.stopPropagation();
+      d.dropOnPane();
+    }, true);
     return;
   }
   const KEY = "olympus:split";
@@ -97,6 +115,9 @@ ${HEADER} { padding-right: calc(var(--olympus-window-buttons, 0px) + 20px) !impo
   // Dragging a sidebar chat: past a few pixels it becomes a drag. With no split, dropping it on the
   // chat area opens it beside the current chat. With a split open, the side under the pointer is
   // outlined ("Replace this chat") and dropping swaps that side's chat; two chats is the most.
+  // Dropping on a message box is left to T3, which adds the chat there as a mention, and the chat
+  // on screen stays. T3 starts the browser's own drag for sidebar chats, so both that and plain
+  // pointer moves are followed; over the pane, the pane's copy of this script reports back.
   // A plain click still opens the chat as usual.
   const zones = () => {
     const m = main()?.getBoundingClientRect();
@@ -109,14 +130,38 @@ ${HEADER} { padding-right: calc(var(--olympus-window-buttons, 0px) + 20px) !impo
             { hit: p, box: p, label: "Replace this chat", drop: open }];
   };
   const within = (r, x, y) => x > r.left && x < r.left + r.width && y > r.top && y < r.top + r.height;
+  const COMPOSER = '[data-slot="composer-host"]';
+  // is (x, y) on a message box, in the main chat or in the pane?
+  const onComposer = (x, y) => {
+    const c = main()?.querySelector(COMPOSER);
+    if (c && within(c.getBoundingClientRect(), x, y)) return true;
+    const frame = document.querySelector("#olympus-split iframe");
+    const pc = frame?.contentDocument?.querySelector(COMPOSER);
+    if (!pc) return false;
+    const f = frame.getBoundingClientRect(), r = pc.getBoundingClientRect();
+    return within({ left: f.left + r.left, top: f.top + r.top, width: r.width, height: r.height }, x, y);
+  };
+  const targetAt = (x, y) => (onComposer(x, y) ? null : zones().find((z) => within(z.hit, x, y)) || null);
+  // T3 adds a chat dropped on the main message box as a chip itself, but its drag lives in this
+  // window, so the pane never sees it: add the same chip there through the pane's own editor
+  const chipInPane = (x, y, route, title) => {
+    const frame = document.querySelector("#olympus-split iframe");
+    const host = frame?.contentDocument?.querySelector(COMPOSER);
+    if (!host) return false;
+    const f = frame.getBoundingClientRect(), r = host.getBoundingClientRect();
+    if (!within({ left: f.left + r.left, top: f.top + r.top, width: r.width, height: r.height }, x, y)) return false;
+    const editor = host.querySelector(".ProseMirror")?.editor;
+    if (!editor) return false;
+    const id = "thread_" + decodeURIComponent(route.split("/").pop());
+    editor.chain().focus("end").insertContent([
+      { type: "composer-context-reference",
+        attrs: { kind: "thread", contextId: id, label: title, source: `[${title}](t3-context://v1/thread/${id})` } },
+      { type: "text", text: " " }]).run();
+    return true;
+  };
 
   let drag = null, frameQueued = false;
-  const update = () => {
-    frameQueued = false;
-    if (!drag || !drag.on) return;
-    const { x, y } = drag.at;
-    drag.ghost.style.transform = `translate(${x + 12}px, ${y + 12}px)`;
-    const z = zones().find((z) => within(z.hit, x, y)) || null;
+  const show = (z) => {
     if (z) {
       Object.assign(drag.zone.style, { left: z.box.left + 8 + "px", top: z.box.top + 8 + "px",
                                        width: z.box.width - 16 + "px", height: z.box.height - 16 + "px" });
@@ -125,6 +170,33 @@ ${HEADER} { padding-right: calc(var(--olympus-window-buttons, 0px) + 20px) !impo
     } else drag.zone.remove();
     drag.target = z;
   };
+  const update = () => {
+    frameQueued = false;
+    if (!drag || !drag.on) return;
+    const { x, y } = drag.at;
+    if (drag.ghost) drag.ghost.style.transform = `translate(${x + 12}px, ${y + 12}px)`;
+    show(targetAt(x, y));
+  };
+  const begin = () => {
+    drag.on = true;
+    drag.zone = Object.assign(document.createElement("div"), { id: "olympus-drop" });
+  };
+  const finish = (drop) => {
+    const d = drag;
+    drag = null;
+    if (!d || !d.on) return;
+    document.documentElement.removeAttribute("data-olympus-dragging");
+    d.ghost?.remove();
+    d.zone.remove();
+    if (drop && d.target) d.target.drop(d.route);
+  };
+  // the pane's copy of this script calls these while a chat is dragged over it
+  window.olympusSplitDrag = {
+    active: () => !!(drag && drag.on),
+    overPane: (over) => { if (drag?.on) show(over ? zones()[1] || null : null); },
+    dropOnPane: () => { if (drag?.on) { drag.target = zones()[1] || null; finish(true); } },
+  };
+
   addEventListener("pointerdown", (e) => {
     const row = e.button === 0 && e.target.closest("li[data-thread-item]");
     if (!row) return;
@@ -134,35 +206,59 @@ ${HEADER} { padding-right: calc(var(--olympus-window-buttons, 0px) + 20px) !impo
              title: (row.firstElementChild?.getAttribute("aria-label") || "Chat").split(",")[0] };
   }, true);
   addEventListener("pointermove", (e) => {
-    if (!drag) return;
+    if (!drag || drag.native) return;
     drag.at = { x: e.clientX, y: e.clientY };
     if (!drag.on) {
       if (Math.hypot(e.clientX - drag.x, e.clientY - drag.y) < 12) return;
-      drag.on = true;
+      begin();
       // the pane stops taking the pointer, and nothing gets text-selected, while dragging
       document.documentElement.setAttribute("data-olympus-dragging", "");
       getSelection()?.removeAllRanges();
       drag.ghost = Object.assign(document.createElement("div"), { id: "olympus-ghost", textContent: drag.title });
-      drag.zone = Object.assign(document.createElement("div"), { id: "olympus-drop" });
       document.body.append(drag.ghost);
     }
     e.preventDefault();
     if (!frameQueued) { frameQueued = true; requestAnimationFrame(update); }
   }, true);
-  addEventListener("pointerup", () => {
-    if (!drag) return;
-    const d = drag;
-    drag = null;
-    if (!d.on) return;
-    document.documentElement.removeAttribute("data-olympus-dragging");
-    d.ghost.remove();
-    d.zone.remove();
-    // the drag ends with a click on whatever is underneath; don't let it open the chat here too
-    const eat = (ev) => { ev.stopPropagation(); ev.preventDefault(); };
-    addEventListener("click", eat, { capture: true, once: true });
-    setTimeout(() => removeEventListener("click", eat, true), 300);
-    d.target?.drop(d.route);
+  addEventListener("pointerup", (e) => {
+    if (!drag || drag.native) return;
+    if (drag.on) {
+      chipInPane(e.clientX, e.clientY, drag.route, drag.title);
+      // the drag ends with a click on whatever is underneath; don't let it open the chat here too
+      const eat = (ev) => { ev.stopPropagation(); ev.preventDefault(); };
+      addEventListener("click", eat, { capture: true, once: true });
+      setTimeout(() => removeEventListener("click", eat, true), 300);
+    }
+    finish(true);
   }, true);
+
+  // the browser's own drag, which T3 starts for sidebar chats (it carries the chat as a mention)
+  addEventListener("dragstart", (e) => {
+    const row = e.target.closest?.("li[data-thread-item]");
+    if (!row) return;
+    const [env, thread] = row.dataset.threadItem.split(":");
+    drag?.ghost?.remove();
+    document.documentElement.removeAttribute("data-olympus-dragging");  // the pane must take drops now
+    drag = { route: `${env}/${encodeURIComponent(thread)}`, native: true, on: false };
+    begin();
+  }, true);
+  addEventListener("dragover", (e) => {
+    if (!drag?.native) return;
+    const z = targetAt(e.clientX, e.clientY);
+    show(z);
+    if (z) { e.preventDefault(); e.dataTransfer.dropEffect = "move"; }
+  }, true);
+  addEventListener("drop", (e) => {
+    if (!drag?.native) return;
+    const z = targetAt(e.clientX, e.clientY);
+    if (!z) { finish(false); return; }  // on a message box: T3's own drop
+    e.preventDefault();
+    e.stopPropagation();
+    drag.target = z;
+    finish(true);
+  }, true);
+  addEventListener("dragend", () => { if (drag?.native) finish(false); }, true);
+
 
   // keep the pane next to the chat area (T3 re-renders it) and bring it back after a reload
   new MutationObserver(() => {
