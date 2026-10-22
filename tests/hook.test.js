@@ -13,9 +13,16 @@ test("turn item for a known request", () => {
   assert.deepStrictEqual(out, [{ threadId: "t1", kind: "item", payload: item }]);
 });
 
-test("unknown request id gives nothing", () => {
+test("unknown request id without a thread gives nothing", () => {
   const f = JSON.stringify(chunk("9", ev({ type: "turn-item.updated", payload: {} })));
   assert.deepStrictEqual(parseFrame(f, subs), []);
+});
+
+test("another subscription's event that names its thread is passed on", () => {
+  // a brand-new chat's first run updates come on T3's wider subscription, not the chat's own
+  const run = { status: "running", ordinal: 1, threadId: "t2" };
+  const out = parseFrame(JSON.stringify(chunk("9", ev({ type: "run.updated", payload: run }))), subs);
+  assert.deepStrictEqual(out, [{ threadId: "t2", kind: "run", payload: run }]);
 });
 
 test("run.updated gives a run", () => {

@@ -8,12 +8,16 @@
       const parsed = JSON.parse(text);
       const out = [];
       for (const m of Array.isArray(parsed) ? parsed : [parsed]) {
-        const threadId = m && m._tag === "Chunk" && subs.get(String(m.requestId));
-        if (!threadId) continue;
+        if (!m || m._tag !== "Chunk") continue;
+        const sub = subs.get(String(m.requestId));
         for (const v of m.values || []) {
-          if (v.kind === "snapshot") out.push({ threadId, kind: "snapshot", payload: v.projection });
+          if (v.kind === "snapshot" && sub) out.push({ threadId: sub, kind: "snapshot", payload: v.projection });
           else if (v.kind === "event" && v.event) {
             const e = v.event;
+            // a chat's own subscription, or another one whose event names its chat (a brand-new
+            // chat's first run updates arrive on T3's wider subscription, before its own starts)
+            const threadId = sub || (e.payload && e.payload.threadId);
+            if (!threadId) continue;
             if (e.type === "turn-item.updated") out.push({ threadId, kind: "item", payload: e.payload });
             else if (e.type === "run.updated") out.push({ threadId, kind: "run", payload: e.payload ?? e });
           }

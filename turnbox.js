@@ -77,7 +77,13 @@
   const draw = () => {
     const id = threadId();
     let el = document.getElementById("olympus-turn");
-    const v = id ? OlympusTurn.view(ordered(chat(id)), chat(id).run) : { plan: null, box: null };
+    // whether the turn is running: T3's own Stop button says so for the open chat. Its socket
+    // doesn't always (a brand-new chat's first "running" comes in the launch reply), so the
+    // run status from the hook is only the fallback when there's no message box.
+    const host = document.querySelector('[data-slot="composer-host"]');
+    const run = host ? { status: host.querySelector('button[aria-label="Stop generation"]') ? "running" : "completed" }
+                     : id && chat(id).run;
+    const v = id ? OlympusTurn.view(ordered(chat(id)), run) : { plan: null, box: null };
     if (id && !chat(id).items.size) load(id);
     const box = v.box && !dismissed.has(v.box.id) ? v.box : null;
     const key = JSON.stringify([id, box, box ? null : v.plan]);
