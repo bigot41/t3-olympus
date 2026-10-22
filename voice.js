@@ -8,7 +8,7 @@
 #olympus-mic.on { border-radius: 50%; color: var(--primary-foreground, HighlightText); background: var(--primary, Highlight);
   animation: olympus-pulse 1.4s ease-in-out infinite; }
 @keyframes olympus-pulse { 50% { box-shadow: 0 0 0 6px color-mix(in srgb, var(--primary, Highlight) 25%, transparent); } }
-#olympus-voice { position: relative; z-index: 1; margin: 0 auto 6px; font-size: 13px; line-height: 1.45;
+#olympus-voice { order: 2; font-size: 13px; line-height: 1.45;
   color: color-mix(in srgb, var(--foreground, CanvasText) 85%, transparent); }
 #olympus-voice b { color: var(--primary, Highlight); font-weight: 600; }`;
   document.head.append(style);
@@ -27,8 +27,7 @@
     let el = document.getElementById("olympus-voice");
     if (html === null || !host) { el?.remove(); return; }
     if (!el) { el = document.createElement("div"); el.id = "olympus-voice"; }
-    if (el.nextElementSibling !== host) host.before(el);
-    el.style.width = host.offsetWidth ? host.offsetWidth + "px" : "";
+    olympusAbove(el);
     el.innerHTML = html;
   };
   const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);

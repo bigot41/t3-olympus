@@ -13,11 +13,15 @@
   style.textContent = `
 li[data-thread-item]:has(> [aria-label$=", ${TITLE}"]) { display: none !important; }
 [data-olympus-hidden] { display: none !important; }
-:root[data-olympus-temporary] [data-slot="composer-host"] { border-style: dashed !important;
-  border-color: color-mix(in srgb, var(--primary, currentColor) 80%, transparent) !important; }
-#olympus-temp-label { position: relative; z-index: 1; display: flex; align-items: center; gap: 6px; margin: 0 auto 6px; font-size: 12px;
-  color: color-mix(in srgb, var(--foreground, CanvasText) 80%, transparent); }
-#olympus-temp-label b { color: var(--primary, Highlight); font-weight: 600; }
+:root[data-olympus-temporary] [data-slot="composer-host"] { border: 2px dashed var(--primary, currentColor) !important; }
+#olympus-temp-label { order: 0; align-self: flex-start; display: inline-flex; align-items: center; gap: 6px;
+  max-width: 100%; padding: 3px 10px 3px 8px; border-radius: 999px; font-size: 12px; line-height: 18px; white-space: nowrap;
+  color: color-mix(in srgb, var(--foreground, CanvasText) 85%, transparent);
+  background: color-mix(in srgb, var(--primary, Highlight) 14%, transparent);
+  border: 1px solid color-mix(in srgb, var(--primary, Highlight) 45%, transparent); }
+#olympus-temp-label svg { flex: none; width: 14px; height: 14px; color: var(--primary, Highlight); }
+#olympus-temp-label b { font-weight: 600; color: var(--foreground, CanvasText); }
+#olympus-temp-label span { overflow: hidden; text-overflow: ellipsis; }
 #olympus-temp-button { display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px;
   border-radius: 6px; background: none; border: 0; color: inherit; cursor: pointer; opacity: .8; }
 #olympus-temp-button:hover { opacity: 1; background: color-mix(in srgb, currentColor 10%, transparent); }`;
@@ -102,10 +106,10 @@ li[data-thread-item]:has(> [aria-label$=", ${TITLE}"]) { display: none !importan
       if (!label) {
         label = document.createElement("div");
         label.id = "olympus-temp-label";
-        label.innerHTML = `${ICON}<span><b>Temporary chat</b> · not saved to your history, deleted when you leave it</span>`;
+        label.title = "Not saved to your chat history. Deleted when you leave this chat.";
+        label.innerHTML = `${ICON}<span><b>Temporary chat</b> · not saved, deleted when you leave</span>`;
       }
-      if (label.nextElementSibling !== host && label.nextElementSibling?.id !== "olympus-next") host.before(label);
-      label.style.width = host.offsetWidth ? host.offsetWidth + "px" : "";
+      olympusAbove(label);
     } else if (label) label.remove();
 
     // keep Temporary out of the project picker, except while this script picks it

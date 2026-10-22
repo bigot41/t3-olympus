@@ -1,5 +1,29 @@
 // Switches T3 to the profile's god when you open a thread in that project, and adds the
 // Continue elsewhere / Send to cloud buttons. The god map is filled in from gods.json by patch.py.
+// One shared place above T3's message box for the Temporary label, the next-step card and the
+// dictation status, so they stack instead of each pushing the others out of the way.
+// Usage: olympusAbove(element) puts it there; the CSS order keeps them in a fixed order.
+window.olympusAbove = (el) => {
+  const host = document.querySelector('[data-slot="composer-host"]');
+  if (!host) return false;
+  let stack = document.getElementById("olympus-stack");
+  if (!stack) {
+    stack = document.createElement("div");
+    stack.id = "olympus-stack";
+    const style = document.createElement("style");
+    style.textContent = `
+#olympus-stack { position: relative; z-index: 1; /* above the composer's frosted backdrop */
+  display: flex; flex-direction: column; gap: 6px; margin: 0 auto 8px; min-width: 0; }
+#olympus-stack:empty { display: none; }`;
+    document.head.append(style);
+  }
+  if (stack.nextElementSibling !== host) host.before(stack);
+  const width = host.offsetWidth ? host.offsetWidth + "px" : "";
+  if (stack.style.width !== width) stack.style.width = width;
+  if (el.parentElement !== stack) stack.append(el);
+  return true;
+};
+
 (() => {
   const GODS = /*GODS*/ {};
   const THEME = "t3code:theme";
