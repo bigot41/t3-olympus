@@ -104,6 +104,8 @@ def files():
     entry = node(header, CLIENT)["files"]["index.html"]
     start = int(entry["offset"])
     html = data[start:start + entry["size"]].decode("utf-8").replace("</head>", f"  {LINK}\n  </head>", 1)
+    hook = "<script>" + (HERE / "olympus-hook.js").read_text(encoding="utf-8") + "</script>\n  "
+    html = html.replace('<script type="module"', hook + '<script type="module"', 1)  # runs before T3's own code
     gods = (HERE / "gods.json").read_text(encoding="utf-8") if (HERE / "gods.json").exists() else "{}"
     gods = json.dumps(json.loads(gods))
     js = ((HERE / "olympus.js").read_text(encoding="utf-8").replace("/*GODS*/ {}", gods)
