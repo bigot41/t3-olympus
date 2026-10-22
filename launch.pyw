@@ -34,4 +34,7 @@ else:
 # the helper behind the Continue elsewhere / Send to cloud buttons (exits if already running)
 subprocess.Popen([sys.executable, str(pathlib.Path(__file__).parent / "helper.py")], close_fds=True,
                  creationflags=subprocess.DETACHED_PROCESS | subprocess.CREATE_NO_WINDOW)
+# the desktop pets, one per profile (exits if already running)
+subprocess.Popen([sys.executable, str(pathlib.Path(__file__).parent / "pets.pyw")], close_fds=True,
+                 creationflags=subprocess.DETACHED_PROCESS | subprocess.CREATE_NO_WINDOW)
 subprocess.Popen([str(EXE), *sys.argv[1:]], close_fds=True)
