@@ -34,14 +34,16 @@ ${HEADER} { padding-right: calc(var(--olympus-window-buttons, 0px) + 20px) !impo
 #olympus-split { position: relative; flex: 0 0 var(--olympus-split-w, 45%); min-width: 320px; display: flex;
   border-left: 1px dotted color-mix(in srgb, var(--foreground, currentColor) 35%, transparent); }
 #olympus-split iframe { flex: 1; border: 0; width: 100%; height: 100svh; background: var(--background, Canvas);
-  opacity: 0; transform: translate3d(18px, 0, 0) scale(.985); transform-origin: left center;
-  transition: opacity .35s ease-out, transform .55s cubic-bezier(.2, .9, .25, 1.05); }
-/* the pane slides open from the divider; the chat fades in once T3 has drawn it inside */
-#olympus-split { overflow: hidden; animation: olympus-split-in .5s cubic-bezier(.22, 1, .36, 1); }
-#olympus-split.ready iframe { opacity: 1; transform: none; }
-#olympus-split.closing { animation: olympus-split-out .32s cubic-bezier(.4, 0, .9, .6) forwards; pointer-events: none; }
-@keyframes olympus-split-in { from { flex-basis: 0; min-width: 0; opacity: .4; } }
-@keyframes olympus-split-out { to { flex-basis: 0; min-width: 0; opacity: 0; } }
+  opacity: 0; transition: opacity .3s ease-out; }
+/* The pane takes its width at once and slides in from the right over it; only transform and
+   opacity move, so the graphics card animates it and nothing is laid out again per frame. The
+   chat fades in once T3 has drawn it inside. */
+#olympus-split { overflow: hidden; contain: layout paint; will-change: transform;
+  animation: olympus-split-in .42s cubic-bezier(.16, 1, .3, 1); }
+#olympus-split.ready iframe { opacity: 1; }
+#olympus-split.closing { animation: olympus-split-out .26s cubic-bezier(.7, 0, .84, 0) forwards; pointer-events: none; }
+@keyframes olympus-split-in { from { transform: translate3d(48px, 0, 0); opacity: 0; } }
+@keyframes olympus-split-out { to { transform: translate3d(48px, 0, 0); opacity: 0; } }
 #olympus-split .loading { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center;
   justify-content: center; gap: 10px; padding: 24px; text-align: center; font-size: 13px; pointer-events: none;
   color: color-mix(in srgb, var(--foreground, CanvasText) 70%, transparent); transition: opacity .3s; }
@@ -54,7 +56,7 @@ ${HEADER} { padding-right: calc(var(--olympus-window-buttons, 0px) + 20px) !impo
 #olympus-split .loading button { padding: 4px 12px; border-radius: 6px; cursor: pointer; font: inherit; border: 0;
   background: var(--primary, Highlight); color: var(--primary-foreground, HighlightText); }
 @keyframes olympus-spin { to { transform: rotate(360deg); } }
-@media (prefers-reduced-motion: reduce) { #olympus-split, #olympus-split iframe { animation: none; transition: none; } }
+@media (prefers-reduced-motion: reduce) { #olympus-split, #olympus-split.closing, #olympus-split iframe { animation: none; transition: none; } }
 #olympus-split .resize { position: absolute; left: -4px; top: 0; bottom: 0; width: 8px; cursor: col-resize; z-index: 5; }
 #olympus-split .close { position: absolute; top: 52px; right: 12px; z-index: 5; width: 24px; height: 24px; border: 0;
   border-radius: 6px; cursor: pointer; font-size: 16px; line-height: 1; color: var(--foreground, CanvasText);
@@ -89,9 +91,8 @@ ${HEADER} { padding-right: calc(var(--olympus-window-buttons, 0px) + 20px) !impo
     pane.classList.remove("closing");
     if (pane.previousElementSibling !== m) m.after(pane);
     document.documentElement.setAttribute("data-olympus-split", "");
-    if (!pane.sized) {
-      pane.sized = new ResizeObserver(() => document.documentElement.style.setProperty(
-        "--olympus-split-px", pane.getBoundingClientRect().width + "px"));
+    if (!pane.sized) {  // the main toolbar's offset; held while you drag the divider, set when you let go
+      pane.sized = new ResizeObserver(() => { if (!pane.dragging) toolbar(pane); });
       pane.sized.observe(pane);
     }
     const frame = pane.querySelector("iframe");
@@ -141,16 +142,34 @@ ${HEADER} { padding-right: calc(var(--olympus-window-buttons, 0px) + 20px) !impo
     pane.addEventListener("animationend", (e) => { if (e.target === pane) done(); });
     setTimeout(done, 500);  // in case the animation never runs
   };
+  // a var on :root restyles the whole page, so only set it when the width really changed
+  let toolbarPx = -1;
+  const toolbar = (pane) => {
+    const w = Math.round(pane.getBoundingClientRect().width);
+    if (w !== toolbarPx) document.documentElement.style.setProperty("--olympus-split-px", (toolbarPx = w) + "px");
+  };
+  // the divider: at most one width change per frame
   const resize = (e) => {
     e.preventDefault();
     const pane = document.getElementById("olympus-split");
     const right = pane.getBoundingClientRect().right;
-    document.documentElement.setAttribute("data-olympus-dragging", "");
-    const move = (ev) => pane.style.setProperty("--olympus-split-w", Math.max(320, right - ev.clientX) + "px");
-    const up = () => { document.documentElement.removeAttribute("data-olympus-dragging");
-                       removeEventListener("pointermove", move); removeEventListener("pointerup", up); };
-    addEventListener("pointermove", move);
-    addEventListener("pointerup", up);
+    // the handle keeps the pointer (and its cursor) even over the frame, without restyling the page
+    const handle = e.currentTarget;
+    handle.setPointerCapture(e.pointerId);
+    let x = e.clientX, queued = false;
+    pane.dragging = true;
+    const apply = () => { queued = false; pane.style.setProperty("--olympus-split-w", Math.max(320, right - x) + "px"); };
+    const move = (ev) => { x = ev.clientX; if (!queued) { queued = true; requestAnimationFrame(apply); } };
+    const up = () => {
+      pane.dragging = false;
+      handle.removeEventListener("pointermove", move);
+      handle.removeEventListener("pointerup", up);
+      handle.removeEventListener("pointercancel", up);
+      toolbar(pane);
+    };
+    handle.addEventListener("pointermove", move);
+    handle.addEventListener("pointerup", up);
+    handle.addEventListener("pointercancel", up);
   };
 
   // Dragging a sidebar chat: past a few pixels it becomes a drag (T3 tracks the pointer itself;
