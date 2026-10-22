@@ -17,6 +17,7 @@ Anything else goes to default_profile. A profile is any folder in profiles_dir t
 also a T3 project, so a new profile needs no code change.
 """
 import datetime, json, os, shutil, sqlite3, subprocess, sys, uuid
+import temporary
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 HOME = os.path.expanduser("~")
@@ -34,8 +35,8 @@ DEFAULT = CONFIG["default_profile"]
 
 def target(root, title):
     """(profile, archive) for a thread, or None to leave it where it is."""
-    if root.startswith(PROFILES + os.sep):
-        return None
+    if root.startswith(PROFILES + os.sep) or temporary.is_temporary(root):
+        return None  # already in a profile, or a temporary chat that is never kept
     if any(m in root for m in CONFIG["archive"]):
         return DEFAULT, True
     if root == P:
@@ -81,7 +82,7 @@ def remove_empty_projects():
     empty = [r[0] for r in con.execute(
         "select p.workspace_root from projection_projects p where p.deleted_at is null and not exists "
         "(select 1 from orchestration_v2_projection_threads t where t.project_id = p.project_id and t.deleted_at is null)")
-        if not r[0].startswith(PROFILES + os.sep)]
+        if not r[0].startswith(PROFILES + os.sep) and not temporary.is_temporary(r[0])]
     con.close()
     t3 = os.path.join(HOME, ".t3", "bin", "t3.cmd")
     for root in empty:
