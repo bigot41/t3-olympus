@@ -43,7 +43,12 @@
       try {
         if (!new URL(url, location.href).pathname.endsWith("/ws")) return;
         const send = this.send.bind(this);
-        this.send = (data) => { noteSend(data); return send(data); };
+        this.send = (data) => {
+          noteSend(data);
+          // the socket T3 sends its orchestration commands on, for temporary.js's delete
+          if (typeof data === "string" && data.includes('"orchestration.')) window.olympusT3Socket = this;
+          return send(data);
+        };
         this.addEventListener("message", (e) => {
           for (const detail of parseFrame(e.data, subs)) {
             try { window.dispatchEvent(new CustomEvent("olympus:thread", { detail })); } catch { /* keep T3 running */ }

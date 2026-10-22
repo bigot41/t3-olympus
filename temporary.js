@@ -44,10 +44,13 @@
     if (typeof data === "string" && data.includes('"orchestration.')) socket = this;
     return send.call(this, data);
   };
+  // olympus-hook.js gives T3's socket its own send, which this prototype wrapper doesn't see,
+  // so the hook records that socket itself; the wrapper is the fallback without the hook
+  const t3Socket = () => window.olympusT3Socket || socket;
   const deleteThread = async (thread) => {
-    for (let i = 0; i < 40 && (!socket || socket.readyState !== 1); i++) await wait(250);
-    if (!socket) throw new Error("not connected to T3");
-    send.call(socket, JSON.stringify({ _tag: "Request", id: 2e9 + Math.floor(Math.random() * 1e8),
+    for (let i = 0; i < 40 && (!t3Socket() || t3Socket().readyState !== 1); i++) await wait(250);
+    if (!t3Socket()) throw new Error("not connected to T3");
+    send.call(t3Socket(), JSON.stringify({ _tag: "Request", id: 2e9 + Math.floor(Math.random() * 1e8),
       tag: "orchestration.dispatchCommand", headers: [],
       payload: { type: "thread.delete", commandId: crypto.randomUUID(), threadId: thread } }));
   };
