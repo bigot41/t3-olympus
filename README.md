@@ -15,6 +15,7 @@ Each profile is a T3 project with its own instructions, and opening a chat in it
 - **Continue elsewhere.** Keeps the same Claude conversation running in the background with Remote Control, so you can pick it up in Claude desktop, claude.ai or the Claude phone app.
 - **Send to cloud.** Claude writes a handoff note from the chat, then starts a Claude Code cloud session with it.
 - **Profile cards.** Rest the mouse on a profile in the sidebar for a moment and a card shows what that profile works on, its folders and its latest chats. Haiku writes the summary, and only re-reads a profile when its chats change.
+- **Split view.** Drag a chat onto the chat area to open it side by side.
 - **Temporary chats.** A chat that isn't saved and is deleted when you leave it.
 - **Context and connectors.** The Ctrl+Shift+B tray shows how full the chat's context is and which connectors Claude has.
 - **Next-step card.** Claude ends a turn with a recap and answer buttons above the message box, as in Claude desktop.
@@ -92,6 +93,12 @@ Open a chat and press **Ctrl+Shift+B**. The tray in the top right has a **Hand o
 - **Continue elsewhere** runs `claude --bg --resume <session> --remote-control`. It's the same conversation with the same history, now running in the background, and a pop-up gives you its claude.ai link. Carry on there rather than in the T3 chat, or the two copies drift apart. Pressing it again reuses the same background session. Stop it with `claude stop <id>`.
 - **Send to cloud** opens a terminal. Claude writes a handoff note from a copy of the chat (saved in `handoffs/`), then runs `claude --cloud` with it. A cloud session can't see your computer, so anything it needs has to be in the note or on GitHub. The first time, Claude Code may show its one-time setup screen in that terminal: finish it and the cloud session starts.
 
+## Split view
+
+Drag a chat from the sidebar onto the chat area and it opens beside the current one, as in Claude desktop. Each side is a full chat with its own message box. Drag the dotted divider to resize it, and × closes it. It comes back if T3 reloads.
+
+The second pane is T3 itself in a frame, so it uses some extra memory while it's open.
+
 ## Temporary chats
 
 The dashed-chat button next to **New thread** starts a temporary chat, like ChatGPT's. It works like any chat (models, files, tools), with a **Temporary chat** label and a dashed message box so you always know. It never shows in the sidebar or the project chooser, and when you leave it, it's deleted.
@@ -142,7 +149,7 @@ T3 serves its interface from `resources/server.asar`. `patch.py` marks the inter
 | `install.py` | One-time setup: themes, config files, shortcuts, Startup entry; `--uninstall` |
 | `launch.pyw` | What the shortcut runs: re-patch if needed, sort chats, start the helper, open T3 |
 | `patch.py` | Adds T3 Olympus to T3, or `--restore` takes it out |
-| `olympus.js`, `cards.js`, `nextstep.js`, `panel.js`, `temporary.js` | The code that runs inside T3 |
+| `olympus.js`, `cards.js`, `nextstep.js`, `panel.js`, `temporary.js`, `split.js` | The code that runs inside T3 |
 | `temporary.py` | Temporary chats: the hidden project, file cleanup and database scrub |
 | `tests/` | `python -m unittest discover tests` |
 | `helper.py` | Local helper for the buttons, god picks and cards |

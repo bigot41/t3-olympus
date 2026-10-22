@@ -10,6 +10,7 @@
 
   const apply = () => {
     queued = false;
+    if (window !== top) return;  // a split-view pane follows the main window's theme
     const crumb = document.querySelector('[data-slot="workspace-breadcrumb-text"]');
     const project = crumb && crumb.textContent.trim();
     if (!project || project === lastProject) return;

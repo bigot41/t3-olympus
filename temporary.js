@@ -132,8 +132,8 @@ li[data-thread-item]:has(> [aria-label$=", ${TITLE}"]) { display: none !importan
   }).observe(document.documentElement, { subtree: true, childList: true, characterData: true });
   window.addEventListener("hashchange", tick);
 
-  // chats left behind when T3 was closed or crashed while one was open
-  setTimeout(async () => {
+  // chats left behind when T3 was closed or crashed while one was open (main window only)
+  if (window === top) setTimeout(async () => {
     try {
       const { threads } = await (await fetch(HELPER + "/temporary")).json();
       for (const t of threads) if (t !== route().thread) remove(t);

@@ -17,6 +17,9 @@ ASAR = RES / "server.asar"
 BACKUP = RES / "server.asar.olympus-orig"
 CLIENT = ["apps", "server", "dist", "client"]
 LINK = '<link rel="stylesheet" href="/olympus.css" data-olympus>\n  <script src="/olympus.js" defer></script>'
+# A split-view pane (split.js) is T3 in a frame; the desktop app only gives its bridge to the
+# top window, so a frame borrows it before T3's own code starts.
+FRAME = "<script>if (window !== top && !window.desktopBridge) window.desktopBridge = top.desktopBridge;</script>"
 OUT = RES / "server.asar.unpacked" / pathlib.Path(*CLIENT)
 GODS = sorted(p.name[:-len("-top.png")] for p in ART.glob("*-top.png"))
 
@@ -104,10 +107,11 @@ def files():
     entry = node(header, CLIENT)["files"]["index.html"]
     start = int(entry["offset"])
     html = data[start:start + entry["size"]].decode("utf-8").replace("</head>", f"  {LINK}\n  </head>", 1)
+    html = html.replace("<head>", f"<head>\n    {FRAME}", 1)
     gods = (HERE / "gods.json").read_text(encoding="utf-8") if (HERE / "gods.json").exists() else "{}"
     gods = json.dumps(json.loads(gods))
     js = ((HERE / "olympus.js").read_text(encoding="utf-8").replace("/*GODS*/ {}", gods)
-          + "".join("\n" + (HERE / f).read_text(encoding="utf-8") for f in ("cards.js", "nextstep.js", "panel.js", "temporary.js")))
+          + "".join("\n" + (HERE / f).read_text(encoding="utf-8") for f in ("cards.js", "nextstep.js", "panel.js", "temporary.js", "split.js")))
     return {"index.html": html, "olympus.css": BASE + "".join(theme_css(g) for g in GODS), "olympus.js": js}
 
 
