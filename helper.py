@@ -15,7 +15,7 @@ config.json's buttons_show_in picks which T3 projects show the buttons ("all" or
 """
 import glob, json, os, re, socket, sqlite3, subprocess, sys, threading, time, urllib.parse
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-import cards_build
+import cards_build, temporary
 from organize import CONFIG
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -151,6 +151,30 @@ def session_info(thread):
     return {"context": context, "connectors": found}
 
 
+leaving = {}  # temporary chat id -> (session, uploads), looked up before T3 deletes the chat
+
+
+def temporary_leaving(body):
+    """Note what to clean up for a temporary chat that is about to be deleted."""
+    thread = str(body["thread"])
+    if thread not in temporary.threads():
+        raise ValueError("Not a temporary chat.")
+    leaving[thread] = (temporary.session_of(thread), temporary.attachments_of(thread))
+    return {"ok": True}
+
+
+def temporary_purge(body):
+    """After T3 deleted a temporary chat, remove its files too."""
+    thread = str(body["thread"])
+    if thread in temporary.threads():
+        raise ValueError("T3 hasn't deleted this chat yet.")
+    if thread not in leaving:
+        raise ValueError("Unknown temporary chat.")
+    session, uploads = leaving.pop(thread)
+    temporary.purge(thread, session, uploads)
+    return {"ok": True}
+
+
 def gods():
     if not os.path.exists(GODS):
         return {}
@@ -213,6 +237,9 @@ class Handler(BaseHTTPRequestHandler):
             return self.reply(200, {"show_in": CONFIG.get("buttons_show_in", "all")})
         if self.path == "/gods":
             return self.reply(200, gods())
+        if self.path == "/temporary":  # the project, and leftover chats to delete
+            return self.reply(200, {"title": temporary.TITLE, "ready": temporary.ensure() is not None,
+                                    "threads": temporary.threads()})
         if self.path.startswith("/session?thread="):
             return self.reply(200, session_info(urllib.parse.unquote(self.path.split("=", 1)[1])))
         if self.path.startswith("/wrapup?thread="):
@@ -225,7 +252,8 @@ class Handler(BaseHTTPRequestHandler):
         if not self.allowed():
             return self.reply(403, {"error": "forbidden"})
         action = {"/continue": lambda b: continue_elsewhere(str(b["thread"])),
-                  "/cloud": lambda b: send_to_cloud(str(b["thread"])), "/gods": set_god}.get(self.path)
+                  "/cloud": lambda b: send_to_cloud(str(b["thread"])), "/gods": set_god,
+                  "/temporary/leaving": temporary_leaving, "/temporary/purge": temporary_purge}.get(self.path)
         if not action:
             return self.reply(404, {"error": "not found"})
         try:
