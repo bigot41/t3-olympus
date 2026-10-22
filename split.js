@@ -196,8 +196,8 @@ ${HEADER} { padding-right: calc(var(--olympus-window-buttons, 0px) + 20px) !impo
   // it starts no browser drag for these rows). With no split, dropping it on the chat area opens
   // it beside the current chat. With a split open, the side under the pointer is outlined
   // ("Replace this chat") and dropping swaps that side's chat; two chats is the most. Over a
-  // message box the outline hugs the box ("Add to message"): T3 adds the chat to the main box as a
-  // chip itself, and chipInPane does the same for the pane's box. A plain click still opens the chat.
+  // message box the outline hugs the box ("Add to message") and dropping adds the chat to it as a
+  // chip (T3 does that itself for some rows; chipAt fills in for the rest). A plain click still opens the chat.
   const zones = () => {
     const m = main()?.getBoundingClientRect();
     if (!m) return [];
@@ -229,15 +229,39 @@ ${HEADER} { padding-right: calc(var(--olympus-window-buttons, 0px) + 20px) !impo
     if (box) return { box, label: "Add to message", composer: true, drop: () => {} };
     return zones().find((z) => within(z.hit, x, y)) || null;
   };
-  const chipInPane = (x, y, route, title) => {
+  // the chat as a chip in the message box under (x, y), unless T3 already put it there
+  const chipAt = (x, y, route, title) => {
+    const c = main()?.querySelector(olympus.COMPOSER);
     const pc = paneComposer();
-    const editor = pc && within(pc.box, x, y) && pc.host.querySelector(".ProseMirror")?.editor;
+    const host = c && within(c.getBoundingClientRect(), x, y) ? c : pc && within(pc.box, x, y) ? pc.host : null;
+    const editor = host?.querySelector(".ProseMirror")?.editor;
     if (!editor) return;
     const id = "thread_" + decodeURIComponent(route.split("/").pop());
-    editor.chain().focus("end").insertContent([
-      { type: "composer-context-reference",
-        attrs: { kind: "thread", contextId: id, label: title, source: `[${title}](t3-context://v1/thread/${id})` } },
-      { type: "text", text: " " }]).run();
+    setTimeout(() => {
+      if (JSON.stringify(editor.getJSON()).includes(`"contextId":"${id}"`)) return;
+      editor.chain().focus("end").insertContent([
+        { type: "composer-context-reference",
+          attrs: { kind: "thread", contextId: id, label: title, source: `[${title}](t3-context://v1/thread/${id})` } },
+        { type: "text", text: " " }]).run();
+    }, 120);
+  };
+  // A sidebar row's chat as a route ("env/thread") and its title. Chat rows carry "env:thread";
+  // rows under a project carry only "true", with the id in their button's test id, so the
+  // environment comes from the open chat or another row.
+  const rowChat = (row) => {
+    const key = row.dataset.threadItem || "";
+    const cut = key.indexOf(":");
+    let env = cut > 0 ? key.slice(0, cut) : "", thread = cut > 0 ? key.slice(cut + 1) : "";
+    if (!thread) {
+      thread = (row.querySelector('[data-testid^="thread-row-"]')?.dataset.testid || "").slice("thread-row-".length);
+      const here = location.hash.replace(/^#\/?/, "").split("/");
+      const other = [...document.querySelectorAll("li[data-thread-item]")].map((r) => r.dataset.threadItem).find((k) => k.includes(":"));
+      env = olympus.threadId() ? here[0] : other ? other.split(":")[0] : "";
+    }
+    if (!env || !thread) return null;
+    const button = row.querySelector('[role="button"]');
+    const title = (button?.getAttribute("aria-label") || button?.innerText.split("\n")[0] || "Chat").split(",")[0].trim();
+    return { route: `${env}/${encodeURIComponent(thread)}`, title };
   };
 
   let drag = null, frameQueued = false;
@@ -259,11 +283,9 @@ ${HEADER} { padding-right: calc(var(--olympus-window-buttons, 0px) + 20px) !impo
 
   addEventListener("pointerdown", (e) => {
     const row = e.button === 0 && e.target.closest("li[data-thread-item]");
-    if (!row) return;
-    const [env, thread] = row.dataset.threadItem.split(":");
-    drag = { x: e.clientX, y: e.clientY, at: { x: e.clientX, y: e.clientY }, zone: null,
-             route: `${env}/${encodeURIComponent(thread)}`,
-             title: (row.firstElementChild?.getAttribute("aria-label") || "Chat").split(",")[0] };
+    const chat = row && rowChat(row);
+    if (!chat) return;
+    drag = { x: e.clientX, y: e.clientY, at: { x: e.clientX, y: e.clientY }, zone: null, ...chat };
   }, true);
   addEventListener("pointermove", (e) => {
     if (!drag) return;
@@ -284,7 +306,7 @@ ${HEADER} { padding-right: calc(var(--olympus-window-buttons, 0px) + 20px) !impo
     if (!d?.zone) return;  // a click, not a drag
     document.documentElement.removeAttribute("data-olympus-dragging");
     d.zone.remove();
-    chipInPane(e.clientX, e.clientY, d.route, d.title);
+    chipAt(e.clientX, e.clientY, d.route, d.title);
     d.target?.drop(d.route);
     // the drag ends with a click on whatever is underneath; don't let it open the chat here too
     const eat = (ev) => { ev.stopPropagation(); ev.preventDefault(); };

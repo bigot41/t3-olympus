@@ -256,7 +256,7 @@ window.olympusAbove = (el) => {
   };
   fetch(HELPER + "/gods").then((r) => r.json()).then(loadGods).catch(() => {});
 
-  // New profile: a button above the sidebar's bottom row opens a small dialog; the helper makes it.
+  // New profile: a "+" in the sidebar Projects header opens a small dialog; the helper makes it.
   const PLUS = svg('<path d="M5 12h14"/><path d="M12 5v14"/>');
   const dialogStyle = document.createElement("style");
   dialogStyle.textContent = `
@@ -274,10 +274,6 @@ window.olympusAbove = (el) => {
 #olympus-new-profile .row { display: flex; justify-content: flex-end; gap: 6px; }
 #olympus-new-profile button { padding: 4px 12px; border-radius: 6px; cursor: pointer; font: inherit; color: inherit;
   background: transparent; border: 1px solid color-mix(in srgb, currentColor 30%, transparent); }
-#olympus-profile-button { display: flex; align-items: center; gap: 8px; margin: 2px var(--sidebar-content-inset, 8px) 0;
-  padding: 6px 8px; border-radius: 8px; border: 1px dashed color-mix(in srgb, var(--primary, currentColor) 55%, transparent);
-  background: transparent; color: var(--sidebar-foreground, inherit); font: inherit; font-size: 13px; cursor: pointer; text-align: left; }
-#olympus-profile-button:hover { background: color-mix(in srgb, var(--primary, Highlight) 12%, transparent); }
 #olympus-new-profile button.primary { background: var(--primary, Highlight); color: var(--primary-foreground, HighlightText); border-color: transparent; }`;
   document.head.append(dialogStyle);
   const profileDialog = async () => {
@@ -321,21 +317,21 @@ window.olympusAbove = (el) => {
     document.body.append(d);
     d.querySelector("input[name=name]").focus();
   };
-  // its own labelled row just above the sidebar's bottom row (Settings, Usage), so it's easy to find;
-  // a "+" icon among those got missed
+  // a "+" just left of T3's Sidebar options button (the Projects header), styled like it
   const profileButton = () => {
-    const footers = document.querySelectorAll('[data-slot="sidebar-inner"] [data-slot="sidebar-footer"]');
-    const footer = footers[footers.length - 1];
+    const opts = document.querySelector('[data-slot="sidebar-inner"] button[aria-label="Sidebar options"]');
     const mine = document.getElementById("olympus-profile-button");
-    if (!footer || (mine && mine.nextElementSibling === footer)) return;
+    if (!opts || (mine && mine.nextElementSibling === opts)) return;
     mine?.remove();
     const b = document.createElement("button");
     b.id = "olympus-profile-button";
     b.type = "button";
-    b.title = "Make a new profile (agent) with its own folder and god";
-    b.innerHTML = PLUS + "<span>New profile</span>";
+    b.className = opts.className;
+    b.title = "New profile";
+    b.setAttribute("aria-label", "New profile");
+    b.innerHTML = PLUS.replace("size-4", "size-3.5");
     b.onclick = (e) => { e.stopPropagation(); profileDialog(); };
-    footer.before(b);
+    opts.before(b);
   };
 
   const tick = () => { apply(); buttons(); profileButton(); };
