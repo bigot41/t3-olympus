@@ -1,6 +1,6 @@
 # Handoff: task list, next-step box and New profile button (branch `turn-box`)
 
-Started 2026-10-22 by Mohammed's dev agent; handed over part way through. Tasks 1–3 of 7 are done. Pick it up from Task 3's review.
+Started 2026-10-22 by Mohammed's dev agent, continued the same day from another machine. Tasks 1–6 of 7 are done; **pick it up at Task 7** (docs, install, final live check, PR).
 
 ## What this is
 
@@ -20,33 +20,40 @@ The behaviour comes from reverse-engineering Claude desktop 3.1623. Those notes 
 
 ## Status
 
+`handoff-tasks` (PR #2: temporary chats, split view, dictation, review fixes) was merged into this branch first (`b8f0697`), so this PR now also shows PR #2's commits until #2 is merged.
+
 | Task | State | Commits |
 |---|---|---|
 | 1. MCP server: `update_plan` + `wrap_up` rules, `instructions` | done, reviewed | `40d08a1` |
 | 2. `turnlogic.js` shared rules (`OlympusTurn.view`) | done, reviewed | `e72ec7b` |
-| 3. Socket hook (`olympus-hook.js`, inlined into `index.html`), `patch.refresh()`, `launch.pyw` | done, **not reviewed yet** | `c1fc7db`, `f4eb82f` |
-| 4. `turnbox.js`: draw the list and box above the composer; delete `nextstep.js` | not started | |
-| 5. `helper.py`: `/turn` fallback reading the transcript incrementally; remove `/wrapup` | not started | |
-| 6. New profile button: `make_profile()`, `POST /profile`, `GET /gods/themes`, dialog in `olympus.js` | not started | |
-| 7. README/HANDOFF docs, `install.py`, live check in T3, merge | not started | |
+| 3. Socket hook, `patch.refresh()`, `launch.pyw` | done, reviewed; one fix | `c1fc7db`, `f4eb82f`, `d30311e` |
+| 4. `turnbox.js` replaces `nextstep.js` | done, checked live | `9e3d33b` |
+| 5. `helper.py` `/turn` incremental fallback; `/wrapup` removed | done, checked live | `3e4ee74` |
+| 6. New profile button (`make_profile`, `POST /profile`, `GET /gods/themes`, dialog) | done, checked live | `cc7e9a0` |
+| 7. README/HANDOFF docs, `install.py`, final live check, PR | **not started** | |
 
-Tests: `python -m unittest discover -s tests -v` (15 OK) and `node --test` from the repo root (39 pass). On Node 24, `node --test tests/` fails because it reads `tests/` as a module path.
+Tests: `python -m unittest discover -s tests` (39 OK) and `node --test` (39 pass).
 
-## Next steps
+### Checked live in T3 (with the DevTools port)
 
-1. **Review Task 3** against plan Task 3 (+ the ruling below). Check: the hook can never throw into T3's code; the hook source has no `</script>`; `refresh()` never writes `server.asar`; `c1fc7db` alone is broken (the inline line landed in `f4eb82f`), fine to squash.
-2. **Do Tasks 4–7** from the plan. Task 4 must also:
-   - swap `nextstep.js` for `turnbox.js` in `patch.files()`;
-   - add the `test_patch` check that `olympus.js` has no `olympus-next`.
-3. **Live check (Task 7).** The dev session runs inside T3. Don't restart T3 mid-session. Instead:
-   - run `python -c "import patch; print(patch.refresh())"`;
-   - press Ctrl+R in T3;
-   - open a new chat in a profile and give it a multi-step task.
+- The orchestration socket's path is `/ws`. Olympus calls arrive as `{type: "dynamic_tool", toolName: "mcp__olympus__update_plan" | "mcp__olympus__wrap_up", input, status}`; your messages as `user_message`; run status goes `running` → `waiting` → `completed`. Each event comes twice (harmless, items are kept by id).
+- **Not as the notes expected:** `GET /api/orchestration/threads/:id` from the page returns T3's HTML, because the page's origin doesn't serve that API, and `orchestration.subscribeThread` sends only events after the client's last known sequence, so a chat T3 has seen before sends no history. `turnbox.js` therefore fills a chat once from the helper's `/turn` (same item ids as T3's, so nothing shows twice) and uses the socket for everything live.
+- After a reload the box came back from `/turn`; clicking Yes sent the reply, the list showed and ticked during the turn, the new box appeared at the end; the box stays with its own chat.
+- New profile: the dialog made a throwaway profile (folder, `CLAUDE.md`, T3 project, god in `gods.json`, `olympus` connected), "Start a chat in it" opened it under its god with no reload; then it was removed.
 
-   Confirm these first, because they are inferred from T3's bundle and haven't been seen live:
-   - the socket path ends in `/ws`;
-   - a real `mcp__olympus__wrap_up` item arrives as `{type:"dynamic_tool", toolName, input, status}`;
-   - `GET /api/orchestration/threads/:id` with header `x-t3-orchestration-protocol: 2` works from page JS.
+### Found and fixed on the way
+
+- The hook gives each `/ws` socket its own `send`, which hid T3's commands from `temporary.js` (PR #2), so leaving a temporary chat stopped deleting it. The hook now records the command socket as `window.olympusT3Socket`.
+- `make_profile` takes about 15 s, mostly `claude mcp add`; the dialog shows "Creating…". An existing T3 project counts as added.
+- The sidebar lists chats, not projects, so a new empty profile isn't in it until it has a chat; T3's project chooser lists it at once, hence the "Start a chat in it" button instead of a reload.
+- The extra "+" squeezes the sidebar's Search label to "S". Worth a look in Task 7.
+
+## Next steps (Task 7)
+
+1. README: replace the next-step card section with the task list + box and the New profile button; file table (`olympus-hook.js`, `turnlogic.js`, `turnbox.js`; no `nextstep.js`); tests (`node --test`, `python -m unittest discover -s tests`).
+2. HANDOFF.md (repo root, if kept): the socket hook and its event, `patch.refresh()`, the DOM hooks (`button[aria-label="Add project"]`, `button[aria-label="Submit message"]`).
+3. `install.py`: probably no change (it already registers `olympus` per profile); run it on the machine that will use this.
+4. Final live check with a real multi-step task in a profile, then take the PR out of draft.
 
 ## Facts found along the way
 
