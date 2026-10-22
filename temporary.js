@@ -24,7 +24,12 @@ li[data-thread-item]:has(> [aria-label$=", ${TITLE}"]) { display: none !importan
 #olympus-temp-label span { overflow: hidden; text-overflow: ellipsis; }
 #olympus-temp-button { display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px;
   border-radius: 6px; background: none; border: 0; color: inherit; cursor: pointer; opacity: .8; }
-#olympus-temp-button:hover { opacity: 1; background: color-mix(in srgb, currentColor 10%, transparent); }`;
+#olympus-temp-button:hover { opacity: 1; background: color-mix(in srgb, currentColor 10%, transparent); }
+#olympus-temp-button[aria-pressed="true"] { opacity: 1; color: var(--primary, Highlight);
+  background: color-mix(in srgb, var(--primary, Highlight) 18%, transparent); }
+/* while the button picks a project, T3's chooser stays invisible */
+:root[data-olympus-picking] [role="dialog"]:has([role="option"]),
+:root[data-olympus-picking] [data-slot$="backdrop"] { opacity: 0 !important; }`;
   document.head.append(style);
 
   // Lucide "message-square-dashed"
@@ -69,30 +74,56 @@ li[data-thread-item]:has(> [aria-label$=", ${TITLE}"]) { display: none !importan
   };
   const project = () => (document.querySelector('[data-slot="workspace-breadcrumb-text"]') || {}).textContent?.trim();
 
-  // Start one: T3's New thread button opens its project chooser; pick Temporary there.
+  // T3's New thread button opens its project chooser. The button picks an entry there: Temporary to
+  // start a temporary chat, or (from inside one) the project you were last in, to go back. The
+  // chooser is hidden while this happens, and the entry is picked on the next frame it appears.
   const isTemporaryOption = (o) => o.innerText.split(/\n/).some((l) => l.trim() === TITLE);
+  const LAST = "olympus:last-project";
+  // the next frame, or 50 ms if T3 is in the background (frames pause there)
+  const frame = () => new Promise((r) => { requestAnimationFrame(r); setTimeout(r, 50); });
   let picking = false;
-  const start = async () => {
-    try { await fetch(HELPER + "/temporary"); } catch { /* the project usually exists already */ }
+  const choose = async (match) => {
     const fresh = document.querySelector('button[aria-label="New thread"]');
-    if (!fresh) return;
+    if (!fresh || picking) return;
     picking = true;
-    fresh.click();
-    for (let i = 0; i < 30; i++) {
-      await wait(100);
-      const option = [...document.querySelectorAll('[role="option"]')].find(isTemporaryOption);
-      if (option) { option.removeAttribute("data-olympus-hidden"); option.click(); break; }
+    document.documentElement.setAttribute("data-olympus-picking", "");
+    try {
+      fresh.click();
+      for (const end = performance.now() + 2000; performance.now() < end;) {
+        await frame();
+        const options = [...document.querySelectorAll('[role="option"]')];
+        const option = options.find(match) || (options.length && !match.strict && options.find(match.fallback));
+        if (option) { option.removeAttribute("data-olympus-hidden"); option.click(); break; }
+      }
+    } finally {
+      picking = false;
+      document.documentElement.removeAttribute("data-olympus-picking");
     }
-    picking = false;
-    for (let i = 0; i < 20 && project() !== TITLE; i++) await wait(100);
     document.querySelector('[data-slot="composer-host"] [contenteditable="true"]')?.focus();
+  };
+  const start = () => {
+    fetch(HELPER + "/temporary").catch(() => {});  // makes sure the project exists; no need to wait
+    const strict = (o) => isTemporaryOption(o);
+    strict.strict = true;
+    return choose(strict).then(() => project() === TITLE || wait(300).then(() => choose(strict)));  // T3 still starting: once more
+  };
+  const leave = () => {
+    let last = null;
+    try { last = localStorage.getItem(LAST); } catch { /* none */ }
+    const lines = (o) => o.innerText.split(/\n/).map((l) => l.trim());
+    const match = (o) => !isTemporaryOption(o) && last && lines(o).includes(last);
+    // no remembered project: the first real one in the list
+    match.fallback = (o) => !isTemporaryOption(o) && !/^(No project|Add project)/m.test(o.innerText.trim()) && /[\/]/.test(o.innerText);
+    return choose(match);
   };
 
   let current = null;  // the temporary chat on screen, deleted when you leave it
   const tick = () => {
     const here = route();
-    const temporary = project() === TITLE;
+    const name = project();
+    const temporary = name === TITLE;
     document.documentElement.toggleAttribute("data-olympus-temporary", temporary);
+    if (name && !temporary) { try { localStorage.setItem(LAST, name); } catch { /* not kept */ } }
     if (current && here.thread !== current) { remove(current); current = null; }
     // only a chat T3's own sidebar lists under Temporary (the project name can change a moment
     // before the address does, so the name alone could point at the chat you just left)
@@ -122,11 +153,16 @@ li[data-thread-item]:has(> [aria-label$=", ${TITLE}"]) { display: none !importan
       const b = document.createElement("button");
       b.id = "olympus-temp-button";
       b.type = "button";
-      b.title = "Temporary chat: not saved, deleted when you leave it";
-      b.setAttribute("aria-label", "Temporary chat");
       b.innerHTML = ICON;
-      b.onclick = (e) => { e.stopPropagation(); start(); };
+      b.onclick = (e) => { e.stopPropagation(); (project() === TITLE ? leave : start)(); };
       fresh.after(b);
+    }
+    // the same button takes you back out of a temporary chat
+    const b = document.getElementById("olympus-temp-button");
+    if (b && b.getAttribute("aria-pressed") !== String(temporary)) {
+      b.setAttribute("aria-pressed", String(temporary));
+      b.title = temporary ? "Leave temporary chat: back to a normal new chat" : "Temporary chat: not saved, deleted when you leave it";
+      b.setAttribute("aria-label", temporary ? "Leave temporary chat" : "Temporary chat");
     }
   };
 

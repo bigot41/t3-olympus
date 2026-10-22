@@ -13,7 +13,9 @@ window.olympusAbove = (el) => {
     const style = document.createElement("style");
     style.textContent = `
 #olympus-stack { position: relative; z-index: 1; /* above the composer's frosted backdrop */
-  display: flex; flex-direction: column; gap: 6px; margin: 0 auto 8px; min-width: 0; }
+  display: flex; flex-direction: column; gap: 6px; min-width: 0; box-sizing: border-box;
+  /* inset from the rounded panel behind the composer, so nothing sits on its corner */
+  margin: 0 auto 6px; padding: 10px 14px 0; }
 #olympus-stack:empty { display: none; }`;
     document.head.append(style);
   }
