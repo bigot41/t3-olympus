@@ -62,8 +62,6 @@ ${HEADER} { padding-right: calc(var(--olympus-window-buttons, 0px) + 20px) !impo
 #olympus-drop { position: fixed; z-index: 9998; pointer-events: none; border-radius: 10px;
   border: 2px dashed var(--primary, Highlight); background: color-mix(in srgb, var(--primary, Highlight) 12%, transparent);
   display: flex; align-items: center; justify-content: center; font-size: 14px; color: var(--foreground, CanvasText); }
-#olympus-ghost { position: fixed; left: 0; top: 0; will-change: transform; z-index: 9999; pointer-events: none; padding: 4px 10px; border-radius: 6px; font-size: 12px;
-  background: var(--popover, Canvas); color: var(--foreground, CanvasText); box-shadow: 0 4px 14px rgb(0 0 0 / .35); }
 :root[data-olympus-dragging], :root[data-olympus-dragging] * { user-select: none !important; cursor: grabbing !important; }
 :root[data-olympus-dragging] #olympus-split iframe { pointer-events: none; }`;
   document.head.append(style);
@@ -174,7 +172,6 @@ ${HEADER} { padding-right: calc(var(--olympus-window-buttons, 0px) + 20px) !impo
     frameQueued = false;
     if (!drag || !drag.on) return;
     const { x, y } = drag.at;
-    if (drag.ghost) drag.ghost.style.transform = `translate(${x + 12}px, ${y + 12}px)`;
     show(targetAt(x, y));
   };
   const begin = () => {
@@ -186,7 +183,6 @@ ${HEADER} { padding-right: calc(var(--olympus-window-buttons, 0px) + 20px) !impo
     drag = null;
     if (!d || !d.on) return;
     document.documentElement.removeAttribute("data-olympus-dragging");
-    d.ghost?.remove();
     d.zone.remove();
     if (drop && d.target) d.target.drop(d.route);
   };
@@ -214,8 +210,7 @@ ${HEADER} { padding-right: calc(var(--olympus-window-buttons, 0px) + 20px) !impo
       // the pane stops taking the pointer, and nothing gets text-selected, while dragging
       document.documentElement.setAttribute("data-olympus-dragging", "");
       getSelection()?.removeAllRanges();
-      drag.ghost = Object.assign(document.createElement("div"), { id: "olympus-ghost", textContent: drag.title });
-      document.body.append(drag.ghost);
+      // no label of our own: T3 already shows the chat's name under the pointer
     }
     e.preventDefault();
     if (!frameQueued) { frameQueued = true; requestAnimationFrame(update); }
@@ -237,7 +232,6 @@ ${HEADER} { padding-right: calc(var(--olympus-window-buttons, 0px) + 20px) !impo
     const row = e.target.closest?.("li[data-thread-item]");
     if (!row) return;
     const [env, thread] = row.dataset.threadItem.split(":");
-    drag?.ghost?.remove();
     document.documentElement.removeAttribute("data-olympus-dragging");  // the pane must take drops now
     drag = { route: `${env}/${encodeURIComponent(thread)}`, native: true, on: false };
     begin();
