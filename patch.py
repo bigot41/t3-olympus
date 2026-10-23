@@ -33,12 +33,27 @@ def uri(god, slot):
     return "data:image/png;base64," + base64.b64encode((ART / f"{god}-{slot}.png").read_bytes()).decode()
 
 
+# Where each piece of god art goes: the statue atop the sidebar, the collage at its foot, the big hero.
+SLOTS = [('[data-slot="sidebar-inner"]::before', "top"),
+         ('[data-slot="sidebar-inner"]::after', "bottom"),
+         ('[class*="group/draft-hero"]::before', "hero")]
+
+
+def theme_mode(god):
+    """A god's one look ("dark" or "light"), or None when its light and dark palettes differ:
+    then it follows T3's own appearance setting and has light art, art/<god>-<slot>-light.png."""
+    theme = json.loads((HERE / "themes" / f"pantheon-{god}.json").read_text(encoding="utf-8"))
+    variants = theme.get("variants", {})
+    return theme["appearance"] if variants.get("light") == variants.get("dark") else None
+
+
 def theme_css(god):
     T = f':root[data-theme-id="pantheon-{god}"]'
-    return f"""
-{T} [data-slot="sidebar-inner"]::before {{ background-image: url("{uri(god, 'top')}"); }}
-{T} [data-slot="sidebar-inner"]::after {{ background-image: url("{uri(god, 'bottom')}"); }}
-{T} [class*="group/draft-hero"]::before {{ background-image: url("{uri(god, 'hero')}"); }}"""
+    looks = [(T, "")]
+    if theme_mode(god) is None:  # T3 takes the "dark" class off the page in light mode
+        looks.append((f"{T}:not(.dark)", "-light"))
+    return "".join(f'\n{sel} {el} {{ background-image: url("{uri(god, slot + suffix)}"); }}'
+                   for sel, suffix in looks for el, slot in SLOTS)
 
 
 # Shared layout, the same places the Pantheon theme uses in Hermes: a statue at the top of the
@@ -121,8 +136,8 @@ def files():
     html = html.replace('<script type="module"', hook + '<script type="module"', 1)  # runs before T3's own code
     gods = (HERE / "gods.json").read_text(encoding="utf-8") if (HERE / "gods.json").exists() else "{}"
     gods = json.dumps(json.loads(gods))
-    modes = json.dumps({t.stem[len("pantheon-"):]: json.loads(t.read_text(encoding="utf-8"))["appearance"]
-                        for t in sorted((HERE / "themes").glob("pantheon-*.json"))})
+    # gods with one look, which olympus.js pins the window buttons to; the rest follow T3's setting
+    modes = json.dumps({g: m for g in GODS if (m := theme_mode(g))})
     js = ((HERE / "olympus.js").read_text(encoding="utf-8").replace("/*GODS*/ {}", gods).replace("/*MODES*/ {}", modes)
           + "".join("\n" + (HERE / f).read_text(encoding="utf-8") for f in
                     ("cards.js", "turnlogic.js", "turnbox.js", "panel.js", "temporary.js", "split.js", "voice.js", "compact.js")))

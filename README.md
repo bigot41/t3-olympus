@@ -10,7 +10,7 @@ Each profile is a T3 project with its own instructions, and opening a chat in it
 
 ## What you get
 
-- **18 god themes.** Olympus, Hera, Poseidon, Demeter, Athena, Apollo, Artemis, Ares, Aphrodite, Hephaestus, Hestia, Dionysus, Caduceus (Hermes), Hades, Nyx, Helios, Selene and Medusa, in dithered classical marble. Each works in light and dark mode, and the window's minimize, maximize and close buttons follow the theme you see.
+- **30 god themes.** Olympus, Hera, Poseidon, Demeter, Athena, Apollo, Artemis, Ares, Aphrodite, Hephaestus, Hestia, Dionysus, Caduceus (Hermes), Hades, Nyx, Helios, Selene and Medusa, in dithered classical marble, plus twelve gods drawn from Baroque and neoclassical sculpture: Prometheus, Persephone, Psyche, Nike, Kronos, Oceanus, Heracles, Laocoön, the Dioscuri, Boreas, Mnemosyne and Daedalus. Most keep one look whatever T3's appearance is set to. Psyche, Nike, Kronos, Oceanus, Heracles, the Dioscuri, Boreas and Mnemosyne have a light and a dark version, palette and art, and switch with T3's Light, Dark or System setting. The window's minimize, maximize and close buttons follow the look you see.
 - **One god per profile.** Open a chat in Dev and T3 turns to Hephaestus; open one in Strategy and it turns to Athena. Pick a different god with **Ctrl+Alt+A** while you're in a profile and it becomes that profile's god from then on.
 - **Continue elsewhere.** Keeps the same Claude conversation running in the background with Remote Control, so you can pick it up in Claude desktop, claude.ai or the Claude phone app.
 - **Send to cloud.** Claude writes a handoff note from the chat, then starts a Claude Code cloud session with it.
@@ -44,7 +44,7 @@ git clone https://github.com/bigot41/t3-olympus.git
 python t3-olympus/install.py
 ```
 
-The installer copies the 18 themes into T3, creates `config.json` and `gods.json` from the examples, and adds a **T3 Olympus** shortcut to the Start Menu and Desktop. It also puts the helper in your Startup folder, so the buttons and cards work even when T3 opens some other way, such as after an in-app update. A helper started from older T3 Olympus code is replaced by the current one the next time the shortcut runs. Close T3, then open it from that shortcut. From now on, always open T3 that way.
+The installer copies the 30 themes into T3, creates `config.json` and `gods.json` from the examples, and adds a **T3 Olympus** shortcut to the Start Menu and Desktop. It also puts the helper in your Startup folder, so the buttons and cards work even when T3 opens some other way, such as after an in-app update. A helper started from older T3 Olympus code is replaced by the current one the next time the shortcut runs. Close T3, then open it from that shortcut. From now on, always open T3 that way.
 
 ## Set up your profiles
 
@@ -203,7 +203,7 @@ T3 serves its interface from `resources/server.asar`. `patch.py` marks the inter
 | `cards_build.py` | Writes the profile cards (`python cards_build.py` rebuilds them all) |
 | `new_profile.py` | Makes a profile: folder, T3 project, god, tools (also behind the **+** button) |
 | `organize.py` | Sorts chats into profiles |
-| `themes/`, `art/` | The 18 palettes and 54 god images |
+| `themes/`, `art/` | The 30 palettes and their god images; `<god>-<slot>-light.png` is the light-mode art of a god with two looks |
 
 ## Uninstall
 
@@ -221,7 +221,7 @@ The first removes the shortcuts, the Startup entry and the themes; the second ta
 
 ## Credits
 
-The god art and palettes come from [Pantheon](docs/PANTHEON-LICENSE.txt) by Adolanium, a theme pack for Hermes Desktop, under the MIT license. T3 Olympus isn't affiliated with T3 Code, Anthropic or Nous Research.
+The god art and palettes come from [Pantheon](docs/PANTHEON-LICENSE.txt) by Adolanium, a theme pack for Hermes Desktop, under the MIT license. The twelve newer gods were made for T3 Olympus from public-domain and CC0 photographs and prints; [their sources are listed here](docs/NEW-GODS-CREDITS.md). T3 Olympus isn't affiliated with T3 Code, Anthropic or Nous Research.
 
 ## License
 

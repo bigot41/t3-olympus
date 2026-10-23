@@ -138,16 +138,18 @@ window.olympusAbove = (el) => {
   // The window's minimize / maximize / close buttons are drawn by T3's desktop shell, light on a
   // dark app and dark on a light one. With the appearance set to System, T3 tells the shell to
   // follow Windows, so a dark god theme on light Windows got dark buttons you can't see. After
-  // each theme change, tell the shell whether the god's theme is light or dark (patch.py fills in
-  // each theme's mode from its file).
+  // each theme change, tell the shell whether the god's theme is light or dark. MODES (filled in
+  // by patch.py) lists only the gods with one look, whose light and dark palettes are the same:
+  // pinning the shell changes nothing else there.
   const MODES = /*MODES*/ {};
   let shellMode = null;
   const syncButtons = () => {
     if (window !== top || typeof window.desktopBridge?.setTheme !== "function") return;
-    // only the god themes, whose light and dark versions are the same: pinning the shell to dark
-    // or light changes nothing else there. Any other theme gets T3's own setting back, so System
-    // keeps following Windows.
-    if (!(document.documentElement.dataset.themeId || "").startsWith("pantheon-")) {
+    const themeId = document.documentElement.dataset.themeId || "";
+    const mode = themeId.startsWith("pantheon-") && MODES[themeId.slice("pantheon-".length)];
+    // Any other theme, including a god with a light and a dark version, gets T3's own setting
+    // back, so System keeps following Windows.
+    if (!mode) {
       if (shellMode) {
         shellMode = null;
         let own = "system";
@@ -156,8 +158,7 @@ window.olympusAbove = (el) => {
       }
       return;
     }
-    const mode = MODES[document.documentElement.dataset.themeId.slice("pantheon-".length)];
-    if (!mode || mode === shellMode) return;
+    if (mode === shellMode) return;
     shellMode = mode;
     Promise.resolve(window.desktopBridge.setTheme(mode)).catch(() => { shellMode = null; });
   };
