@@ -13,6 +13,9 @@ Each pet is its profile's god on a round medallion, showing what that profile's 
 Click a pet to bring T3 forward on that profile's chat (a new one if it has none). Drag to move
 it (it remembers where). Hover for the profile's name, right-click for more. The pets leave when
 T3 closes; the helper starts them again whenever T3 is open, however it was opened.
+
+Right-click > Hide pets, or Ctrl+Alt+P in T3, turns them off until you press Ctrl+Alt+P again
+(local/pets-off is there while they're off).
 """
 import ctypes, datetime, json, math, os, pathlib, socket, sqlite3, subprocess, sys, threading, time
 import tkinter as tk
@@ -30,6 +33,7 @@ LOCAL = HERE / "local"
 PLACES = LOCAL / "pets-v2.json"    # where you left each pet
 OPEN = LOCAL / "pets-open.json"    # a chat a pet asked T3 to open (pets.js picks it up through the helper)
 SEEN = LOCAL / "pets-seen.json"    # the chat T3 shows now (written by the helper for pets.js)
+OFF = LOCAL / "pets-off"           # there while you've turned the pets off (the helper's PETS_OFF)
 PORT = 47834                       # held while a copy runs, so a second copy exits
 
 
@@ -617,7 +621,7 @@ class Pet:
                       command=lambda: open_t3(self.thread, self.name))
         m.add_command(label=f"New chat in {self.name}", command=lambda: open_t3(None, self.name))
         m.add_separator()
-        m.add_command(label="Hide pets", command=self.app.root.destroy)
+        m.add_command(label="Hide pets (Ctrl+Alt+P in T3 brings them back)", command=self.app.hide)
         m.tk_popup(e.x_root, e.y_root)
 
 
@@ -649,12 +653,18 @@ class App:
         w, h = self.root.winfo_screenwidth(), self.root.winfo_screenheight()
         return (w - (i + 1) * (W + 6) - 20, h - H - 60)
 
+    def hide(self):
+        """Turn the pets off, so the helper doesn't start them again until Ctrl+Alt+P."""
+        LOCAL.mkdir(exist_ok=True)
+        OFF.touch()
+        self.root.destroy()
+
     def save_places(self):
         self.places.update({n: [p.win.winfo_x(), p.win.winfo_y()] for n, p in self.pets.items()})
         write_json(PLACES, self.places)
 
     def poll(self):
-        if not self.t3_up:
+        if not self.t3_up or OFF.exists():  # T3 closed, or you turned the pets off
             self.root.destroy()
             return
         try:
@@ -689,6 +699,8 @@ class App:
 
 
 if __name__ == "__main__":
+    if OFF.exists():
+        sys.exit(0)  # turned off (Hide pets or Ctrl+Alt+P)
     lock = socket.socket()
     try:
         lock.bind(("127.0.0.1", PORT))

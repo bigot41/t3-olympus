@@ -302,15 +302,16 @@ PETS_OPEN = os.path.join(HERE, "local", "pets-open.json")
 PETS_SEEN = os.path.join(HERE, "local", "pets-seen.json")
 
 
+PETS_OFF = os.path.join(HERE, "local", "pets-off")  # there while you've turned the pets off
 PETS_PORT = 47834  # pets.pyw holds it while it runs
 pets_checked = 0.0
 
 
 def ensure_pets():
-    """Start the desktop pets if they aren't running: T3 is open (pets.js is asking), however it was
-    opened. Checked at most every 10 s."""
+    """Start the desktop pets if they aren't running and you haven't turned them off: T3 is open
+    (pets.js is asking), however it was opened. Checked at most every 10 s."""
     global pets_checked
-    if time.time() - pets_checked < 10:
+    if os.path.exists(PETS_OFF) or time.time() - pets_checked < 10:
         return
     pets_checked = time.time()
     with socket.socket() as s:
@@ -321,6 +322,20 @@ def ensure_pets():
     pythonw = os.path.join(os.path.dirname(sys.executable), "pythonw.exe")
     subprocess.Popen([pythonw if os.path.exists(pythonw) else sys.executable, os.path.join(HERE, "pets.pyw")],
                      cwd=HERE, close_fds=True, creationflags=NO_WINDOW)
+
+
+def pets_toggle(_body=None):
+    """POST /pets/toggle (Ctrl+Alt+P in T3): turn the desktop pets off or on, and keep it that way.
+    Off: pets.pyw sees PETS_OFF and leaves. On: they start straight away."""
+    global pets_checked
+    if os.path.exists(PETS_OFF):
+        os.remove(PETS_OFF)
+        pets_checked = 0.0
+        ensure_pets()
+        return {"on": True}
+    os.makedirs(os.path.dirname(PETS_OFF), exist_ok=True)
+    open(PETS_OFF, "w").close()
+    return {"on": False}
 
 
 def pets_poll(query):
@@ -451,7 +466,7 @@ class Handler(BaseHTTPRequestHandler):
         action = {"/continue": lambda b: continue_elsewhere(str(b["thread"]), b.get("allow") is True),
                   "/cloud": lambda b: send_to_cloud(str(b["thread"])), "/gods": set_god,
                   "/temporary/leaving": temporary_leaving, "/temporary/purge": temporary_purge,
-                  "/profile": make_profile}.get(self.path)
+                  "/profile": make_profile, "/pets/toggle": pets_toggle}.get(self.path)
         if not action:
             return self.reply(404, {"error": "not found"})
         try:

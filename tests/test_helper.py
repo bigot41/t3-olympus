@@ -130,3 +130,38 @@ class ContinueTrust(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class PetsToggle(unittest.TestCase):
+    """Hide pets / Ctrl+Alt+P: off stays off (the helper doesn't restart them), on starts them now."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        off = os.path.join(self.tmp.name, "local", "pets-off")
+        for patch in (mock.patch.object(helper, "PETS_OFF", off), mock.patch.object(helper.subprocess, "Popen")):
+            self.addCleanup(patch.stop)
+            patch.start()
+        self.popen = helper.subprocess.Popen
+        helper.pets_checked = 0.0
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def test_off_then_on(self):
+        self.assertEqual(helper.pets_toggle(), {"on": False})
+        self.assertTrue(os.path.exists(helper.PETS_OFF))
+        self.assertEqual(helper.pets_toggle(), {"on": True})
+        self.assertFalse(os.path.exists(helper.PETS_OFF))
+
+    def test_turning_on_starts_them_at_once(self):
+        helper.pets_toggle()
+        helper.pets_checked = 1e12  # just checked: only the toggle's own reset lets it start them
+        with mock.patch.object(helper.socket, "socket") as sock:
+            helper.pets_toggle()
+        sock.assert_called_once()
+        self.popen.assert_called_once()
+
+    def test_off_means_no_restart(self):
+        helper.pets_toggle()
+        helper.ensure_pets()
+        self.popen.assert_not_called()

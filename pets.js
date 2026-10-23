@@ -43,4 +43,16 @@
     }
   };
   loop();
+
+  // Ctrl+Alt+P turns the desktop pets off or on; the helper remembers it until you press it again
+  addEventListener("keydown", async (e) => {
+    if (!e.ctrlKey || !e.altKey || e.shiftKey || e.code !== "KeyP") return;
+    e.preventDefault();
+    try {
+      const { on } = await olympus.post("/pets/toggle", {});
+      olympus.toast(on ? "Desktop pets on." : "Desktop pets off. Press Ctrl+Alt+P to bring them back.");
+    } catch (err) {
+      olympus.toast(err instanceof TypeError ? "The T3 Olympus helper isn't running." : olympus.esc(err.message));
+    }
+  }, true);
 })();

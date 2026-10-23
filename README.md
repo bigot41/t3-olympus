@@ -160,7 +160,7 @@ Each profile gets a pet: its god on a round medallion, in the bottom-right corne
 | Hops and chimes, with a sun | A reply is ready that you haven't seen yet |
 | A pulsing red "!" | Claude is waiting for you, such as for an approval |
 
-Click a pet to bring T3 forward on that chat, or on a new chat in the profile if it has none. Drag one to move it; it remembers where. Point at it for the profile's name, or right-click for **New chat** and **Hide pets**. They close with T3, and reopen whenever T3 is open again. They are drawn at your screen's scaling (100%, 125%, 150% and so on) and redraw if it changes.
+Click a pet to bring T3 forward on that chat, or on a new chat in the profile if it has none. Drag one to move it; it remembers where. Point at it for the profile's name, or right-click for **New chat** and **Hide pets**. They close with T3, and reopen whenever T3 is open again. To turn them off for good, choose **Hide pets** or press **Ctrl+Alt+P** in T3: they stay off, even after T3 restarts, until you press **Ctrl+Alt+P** again. They are drawn at your screen's scaling (100%, 125%, 150% and so on) and redraw if it changes.
 
 ## Context and connectors
 
@@ -193,6 +193,7 @@ python wrapup_mcp.py --register "C:/path/to/folder"
 | Ctrl+Shift+M / Ctrl+Shift+E | Model / effort |
 | Ctrl+U | Usage and plan limits |
 | Ctrl+Alt+A | Pick a god for the current profile |
+| Ctrl+Alt+P | Turn the desktop pets off or on |
 
 ## How it works
 
