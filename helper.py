@@ -299,13 +299,34 @@ def set_god(body):
 
 
 building = threading.Lock()
+refreshing = set()
+refresh_guard = threading.Lock()
 
 
 def hover_card(name):
-    """The hover card for one profile, rebuilt now: called when you hover it in T3.
-    Haiku only runs when that profile's chats or folders changed since its last card."""
+    """Rebuild one profile's local hover card without making model requests."""
     with building:  # one rebuild at a time, so cards.json writes never overlap
         return cards_build.build(name).get(name, {})
+
+
+def refresh_card(body):
+    """Refresh one known profile, rejecting duplicate in-flight requests."""
+    name = body.get("name") if isinstance(body, dict) else None
+    if not isinstance(name, str) or name not in cards_build.profiles():
+        return 400, {"ok": False, "error": "Choose one known profile."}
+    with refresh_guard:
+        if name in refreshing:
+            return 409, {"ok": False, "error": "Refresh already in progress."}
+        refreshing.add(name)
+    try:
+        with building:
+            card = cards_build.build(name, refresh=True, strict_refresh=True)[name]
+        return 200, {"ok": True, "card": card}
+    except Exception:
+        return 502, {"ok": False, "error": "Couldn't refresh AI summary. Try again later."}
+    finally:
+        with refresh_guard:
+            refreshing.discard(name)
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -330,6 +351,7 @@ class Handler(BaseHTTPRequestHandler):
         if self.allowed():
             self.send_header("Access-Control-Allow-Origin", ORIGIN)
             self.send_header("Access-Control-Allow-Headers", "Content-Type")
+            self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
             self.send_header("Access-Control-Allow-Private-Network", "true")
         self.end_headers()
 
@@ -356,6 +378,16 @@ class Handler(BaseHTTPRequestHandler):
     def do_POST(self):
         if not self.allowed():
             return self.reply(403, {"error": "forbidden"})
+        if self.path == "/card/refresh":
+            try:
+                body = json.loads(self.rfile.read(int(self.headers.get("Content-Length") or 0)))
+            except (ValueError, UnicodeError):
+                return self.reply(400, {"ok": False, "error": "Invalid refresh request."})
+            try:
+                code, result = refresh_card(body)
+            except Exception:
+                code, result = 502, {"ok": False, "error": "Couldn't refresh AI summary. Try again later."}
+            return self.reply(code, result)
         if self.path.startswith("/voice/"):
             try:
                 data = self.rfile.read(int(self.headers.get("Content-Length") or 0))
@@ -381,7 +413,7 @@ def running():
 
 
 STAMP = os.path.join(HERE, "local", "helper.json")  # the running helper's code version
-CODE = ("helper.py", "voice.py", "temporary.py", "organize.py", "cards_build.py", "new_profile.py", "wrapup_mcp.py")
+CODE = ("helper.py", "voice.py", "temporary.py", "organize.py", "cards_build.py", "background_patch.py", "new_profile.py", "wrapup_mcp.py")
 
 
 if __name__ == "__main__":
