@@ -494,14 +494,10 @@ user32.SetWindowPos.argtypes = [wintypes.HWND, wintypes.HWND, ctypes.c_int, ctyp
 
 def premultiplied(img):
     """BGRA bytes with colour premultiplied by alpha, as UpdateLayeredWindow wants."""
-    import numpy as np
-    a = np.asarray(img, dtype=np.uint16)
-    out = np.empty(a.shape, dtype=np.uint8)
-    alpha = a[..., 3]
-    for i, j in ((0, 2), (1, 1), (2, 0)):  # RGB -> BGR
-        out[..., i] = (a[..., j] * alpha // 255).astype(np.uint8)
-    out[..., 3] = alpha
-    return out.tobytes()
+    from PIL import Image, ImageChops
+    r, g, b, a = img.split()
+    return Image.merge("RGBA", (ImageChops.multiply(b, a), ImageChops.multiply(g, a),
+                                ImageChops.multiply(r, a), a)).tobytes()
 
 
 class Layered:
