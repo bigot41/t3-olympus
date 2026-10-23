@@ -298,6 +298,73 @@ def set_god(body):
     return current
 
 
+PETS_OPEN = os.path.join(HERE, "local", "pets-open.json")
+PETS_SEEN = os.path.join(HERE, "local", "pets-seen.json")
+
+
+PETS_OFF = os.path.join(HERE, "local", "pets-off")  # there while you've turned the pets off
+PETS_PORT = 47834  # pets.pyw holds it while it runs
+pets_checked = 0.0
+
+
+def ensure_pets():
+    """Start the desktop pets if they aren't running and you haven't turned them off: T3 is open
+    (pets.js is asking), however it was opened. Checked at most every 10 s."""
+    global pets_checked
+    if os.path.exists(PETS_OFF) or time.time() - pets_checked < 10:
+        return
+    pets_checked = time.time()
+    with socket.socket() as s:
+        try:
+            s.bind(("127.0.0.1", PETS_PORT))  # free, so no pets: release it and start them
+        except OSError:
+            return  # held: the pets are running
+    pythonw = os.path.join(os.path.dirname(sys.executable), "pythonw.exe")
+    subprocess.Popen([pythonw if os.path.exists(pythonw) else sys.executable, os.path.join(HERE, "pets.pyw")],
+                     cwd=HERE, close_fds=True, creationflags=NO_WINDOW)
+
+
+def pets_toggle(_body=None):
+    """POST /pets/toggle (Ctrl+Alt+P in T3): turn the desktop pets off or on, and keep it that way.
+    Off: pets.pyw sees PETS_OFF and leaves. On: they start straight away."""
+    global pets_checked
+    if os.path.exists(PETS_OFF):
+        os.remove(PETS_OFF)
+        pets_checked = 0.0
+        ensure_pets()
+        return {"on": True}
+    os.makedirs(os.path.dirname(PETS_OFF), exist_ok=True)
+    open(PETS_OFF, "w").close()
+    return {"on": False}
+
+
+def pets_poll(query):
+    """GET /pets/poll from pets.js: note the chat T3 shows (so a desktop pet's done badge clears),
+    and hand over a chat a pet was clicked for (pets.pyw writes it), once."""
+    ensure_pets()
+    q = urllib.parse.parse_qs(query)
+    os.makedirs(os.path.dirname(PETS_SEEN), exist_ok=True)
+    with open(PETS_SEEN + ".tmp", "w", encoding="utf-8") as f:
+        json.dump({"thread": q.get("thread", [""])[0], "focus": q.get("focus", ["0"])[0] == "1",
+                   "time": time.time()}, f)
+    os.replace(PETS_SEEN + ".tmp", PETS_SEEN)
+    # held open up to 2 s, so a click on a pet reaches T3 within ~50 ms
+    end = time.time() + 2
+    while not os.path.exists(PETS_OPEN):
+        if time.time() > end:
+            return {}
+        time.sleep(0.05)
+    try:
+        with open(PETS_OPEN, encoding="utf-8") as f:
+            ask = json.load(f)
+        os.remove(PETS_OPEN)
+    except (OSError, ValueError):
+        return {}
+    if time.time() - ask.get("time", 0) > 60:
+        return {}
+    return {"open": ask.get("thread"), "profile": ask.get("profile")}
+
+
 building = threading.Lock()
 refreshing = set()
 refresh_guard = threading.Lock()
@@ -371,6 +438,8 @@ class Handler(BaseHTTPRequestHandler):
             return self.reply(200, session_info(urllib.parse.unquote(self.path.split("=", 1)[1])))
         if self.path.startswith("/turn?thread="):
             return self.reply(200, turn_state(urllib.parse.unquote(self.path.split("=", 1)[1])))
+        if self.path.startswith("/pets/poll?"):
+            return self.reply(200, pets_poll(self.path.split("?", 1)[1]))
         if self.path.startswith("/card?name="):
             return self.reply(200, hover_card(urllib.parse.unquote(self.path.split("=", 1)[1])))
         self.reply(404, {"error": "not found"})
@@ -397,7 +466,7 @@ class Handler(BaseHTTPRequestHandler):
         action = {"/continue": lambda b: continue_elsewhere(str(b["thread"]), b.get("allow") is True),
                   "/cloud": lambda b: send_to_cloud(str(b["thread"])), "/gods": set_god,
                   "/temporary/leaving": temporary_leaving, "/temporary/purge": temporary_purge,
-                  "/profile": make_profile}.get(self.path)
+                  "/profile": make_profile, "/pets/toggle": pets_toggle}.get(self.path)
         if not action:
             return self.reply(404, {"error": "not found"})
         try:

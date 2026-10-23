@@ -175,6 +175,7 @@ window.olympusAbove = (el) => {
     clearTimeout(t.timer);
     if (!keep) t.timer = setTimeout(() => t.remove(), 6000);
   };
+  olympus.toast = toast;
 
   const call = async (path, label, allow) => {
     const thread = threadId();

@@ -125,7 +125,7 @@ def files():
                         for t in sorted((HERE / "themes").glob("pantheon-*.json"))})
     js = ((HERE / "olympus.js").read_text(encoding="utf-8").replace("/*GODS*/ {}", gods).replace("/*MODES*/ {}", modes)
           + "".join("\n" + (HERE / f).read_text(encoding="utf-8") for f in
-                    ("cards.js", "turnlogic.js", "turnbox.js", "panel.js", "temporary.js", "split.js", "voice.js", "compact.js", "usage.js")))
+                    ("cards.js", "turnlogic.js", "turnbox.js", "panel.js", "temporary.js", "split.js", "voice.js", "compact.js", "usage.js", "pets.js")))
     return {"index.html": html, "olympus.css": BASE + "".join(theme_css(g) for g in GODS), "olympus.js": js}
 
 

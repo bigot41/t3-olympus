@@ -22,6 +22,8 @@ Each profile is a T3 project with its own instructions, and opening a chat in it
 - **Context and connectors.** The Ctrl+Shift+B tray shows how full the chat's context is and which connectors Claude has.
 - **Task list and next-step box.** As in Claude desktop: a live list of steps while Claude works, then a recap with answer buttons when the turn ends.
 - **New profile button.** A **+** in the sidebar makes a profile, its god and its tools in one go.
+- **Desktop pets.** Each profile's god sits on your desktop as a small medallion that shows when that profile is working, done or waiting on you, even with T3 minimised. Click one to jump to its chat.
+- **Antigravity usage.** The Usage page names Gemini as Antigravity and shows a placeholder bar when Google reports no quota.
 - **Chat sorting.** Chats T3 imports from Claude Code land in one project per folder. T3 Olympus files them into your profiles by rules you set.
 - **Survives T3 updates.** Open T3 from the **T3 Olympus** shortcut and it puts everything back if an update removed it.
 
@@ -147,6 +149,19 @@ How it works and what it can't promise:
 - T3's delete only marks a chat deleted, so the next time the shortcut opens T3 (with T3 closed) the launcher removes every remaining row for deleted temporary chats from T3's database and compacts it. Chats left open when T3 closed or crashed are deleted the next time T3 opens.
 - While the chat is open it is on disk like any chat. T3's general trace logs may hold fragments. Anthropic receives the messages to answer them and keeps them under your account's data settings.
 
+## Desktop pets
+
+Each profile gets a pet: its god on a round medallion, in the bottom-right corner of the screen and above other windows. The pets read T3's own records, so they keep up while T3 is minimised or behind other windows.
+
+| The pet shows | Meaning |
+|---|---|
+| Nothing | No chat in the profile is running |
+| Floats, with an amber "..." | A chat is working |
+| Hops and chimes, with a sun | A reply is ready that you haven't seen yet |
+| A pulsing red "!" | Claude is waiting for you, such as for an approval |
+
+Click a pet to bring T3 forward on that chat, or on a new chat in the profile if it has none. Drag one to move it; it remembers where. Point at it for the profile's name, or right-click for **New chat** and **Hide pets**. They close with T3, and reopen whenever T3 is open again. To turn them off for good, choose **Hide pets** or press **Ctrl+Alt+P** in T3: they stay off, even after T3 restarts, until you press **Ctrl+Alt+P** again. They are drawn at your screen's scaling (100%, 125%, 150% and so on) and redraw if it changes.
+
 ## Context and connectors
 
 The Ctrl+Shift+B tray also has a **Context** and **Connectors** section, like Claude desktop's side panel. It shows how full the open chat's context window is, and the connectors (MCP servers) Claude has in that chat's folder, with a green or red dot for whether each one is connected. It refreshes every 20 seconds while the tray is open.
@@ -178,6 +193,7 @@ python wrapup_mcp.py --register "C:/path/to/folder"
 | Ctrl+Shift+M / Ctrl+Shift+E | Model / effort |
 | Ctrl+U | Usage and plan limits |
 | Ctrl+Alt+A | Pick a god for the current profile |
+| Ctrl+Alt+P | Turn the desktop pets off or on |
 
 ## How it works
 
@@ -192,11 +208,12 @@ T3 serves its interface from `resources/server.asar`. `patch.py` marks the inter
 | `install.py` | One-time setup: themes, config files, shortcuts, Startup entry; `--uninstall` |
 | `launch.pyw` | What the shortcut runs: re-patch if needed, sort chats, start the helper, open T3 |
 | `patch.py` | Adds T3 Olympus to T3, or `--restore` takes it out |
-| `olympus.js`, `cards.js`, `panel.js`, `temporary.js`, `split.js`, `voice.js`, `compact.js` | The code that runs inside T3 |
+| `olympus.js`, `cards.js`, `panel.js`, `temporary.js`, `split.js`, `voice.js`, `compact.js`, `usage.js`, `pets.js` | The code that runs inside T3 |
 | `olympus-hook.js`, `turnlogic.js`, `turnbox.js` | Task list and next-step box: T3's events, the rules, the drawing |
+| `pets.pyw` | The desktop pets: reads T3's database, draws the medallions, opens chats |
 | `voice.py` | Dictation: streams your microphone to Claude Code's speech-to-text service |
 | `temporary.py` | Temporary chats: the hidden project, file cleanup and database scrub |
-| `tests/` | `python -m unittest discover -s tests` and `node --test` |
+| `tests/` | `python -m unittest discover -s tests -p "test_*.py"` (from `tests/`) and `node --test tests/*.test.js` |
 | `helper.py` | Local helper for the buttons, god picks and cards |
 | `send_to_cloud.py` | Handoff note, then `claude --cloud` |
 | `wrapup_mcp.py` | The `olympus` tool server: `update_plan` and `wrap_up` |
