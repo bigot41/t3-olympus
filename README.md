@@ -140,12 +140,12 @@ The second pane is T3 itself in a frame, so it uses some extra memory while it's
 
 ## Temporary chats
 
-The dashed-chat button next to **New thread** starts a temporary chat, like ChatGPT's. It works like any chat (models, files, tools), with a **Temporary chat** label and a dashed message box so you always know. It never shows in the sidebar or the project chooser, and when you leave it, it's deleted.
+The dashed-chat button next to **New thread** starts a temporary chat, like ChatGPT's. It works like any chat (models, files, tools), with a **Temporary chat** label and a dashed message box so you always know. It never shows in the sidebar or the project chooser, and it stays active while you check Usage or Settings. Use **Leave temporary chat** to delete it and return to a normal chat.
 
 How it works and what it can't promise:
 
 - It's a normal chat in a hidden **Temporary** project (`~/.t3/olympus-temporary`). That folder turns Claude's automatic memory off, so nothing is read from or written to memory. Your own `~/.claude/CLAUDE.md` and permission settings still apply, as for every chat.
-- When you leave it, T3's own delete command removes it, and the helper deletes Claude Code's transcript, file snapshots and session files, T3's log for that chat, and files you uploaded.
+- When you click **Leave temporary chat**, T3's own delete command removes it, and the helper deletes Claude Code's transcript, file snapshots and session files, T3's log for that chat, and files you uploaded.
 - T3's delete only marks a chat deleted, so the next time the shortcut opens T3 (with T3 closed) the launcher removes every remaining row for deleted temporary chats from T3's database and compacts it. Chats left open when T3 closed or crashed are deleted the next time T3 opens.
 - While the chat is open it is on disk like any chat. T3's general trace logs may hold fragments. Anthropic receives the messages to answer them and keeps them under your account's data settings.
 
