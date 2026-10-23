@@ -9,6 +9,7 @@ as "unpacked" in that archive's header and writes a copy with one extra
 archive changes. A T3 update replaces server.asar, so re-run this afterwards.
 """
 import base64, json, pathlib, shutil, struct, sys
+from background_patch import lean_titles, sqlite_sidecars
 
 HERE = pathlib.Path(__file__).parent
 ART = HERE / "art"
@@ -128,6 +129,29 @@ def files():
     return {"index.html": html, "olympus.css": BASE + "".join(theme_css(g) for g in GODS), "olympus.js": js}
 
 
+def server_files():
+    """Return the version-checked server overlay for lightweight title requests."""
+    header, data = read_asar(BACKUP)
+    parts = ["apps", "server", "dist"]
+    for name, entry in node(header, parts)["files"].items():
+        if not name.startswith("binCli-") or not name.endswith(".mjs"):
+            continue
+        start = int(entry["offset"])
+        source = data[start:start + entry["size"]].decode("utf-8")
+        if 'return fromRunner("ClaudeTextGeneration",' in source:
+            return {pathlib.Path(*parts, name): sqlite_sidecars(lean_titles(source))}
+    raise ValueError("Unsupported T3 version: Claude title-generation module not found")
+
+
+def stage_server():
+    """Write the server overlay without modifying the archive of a running T3."""
+    for relative, text in server_files().items():
+        path = pathlib.Path(str(ASAR) + ".unpacked") / relative
+        path.parent.mkdir(parents=True, exist_ok=True)
+        if not path.exists() or path.read_text(encoding="utf-8") != text:
+            path.write_text(text, encoding="utf-8")
+
+
 def is_unpacked():
     return "unpacked" in node(read_asar(ASAR)[0], CLIENT)["files"]["index.html"]
 
@@ -141,6 +165,9 @@ def patch():
     for name, text in files().items():
         (OUT / name).write_text(text, encoding="utf-8")
         node(header, CLIENT)["files"][name] = {"size": len(text.encode()), "unpacked": True}
+    stage_server()
+    for relative, text in server_files().items():
+        node(header, list(relative.parts[:-1]))["files"][relative.name] = {"size": len(text.encode()), "unpacked": True}
     write_asar(ASAR, header, data)
     print(f"patched {ASAR} ({len(GODS)} gods)")
 
@@ -149,6 +176,7 @@ def refresh():
     """Rewrite stale files in T3's unpacked UI folder. Works while T3 runs (server.asar is untouched)."""
     if not is_unpacked():
         return False
+    stage_server()
     wrote = False
     for name, text in files().items():
         path = OUT / name
@@ -161,7 +189,11 @@ def refresh():
 def is_patched():
     """True when T3 has the current art, buttons, cards and gods.json map."""
     try:
-        return is_unpacked() and all((OUT / n).read_text(encoding="utf-8") == t for n, t in files().items())
+        header = read_asar(ASAR)[0]
+        server_ready = all(node(header, list(relative.parts)).get("unpacked") and
+                           (pathlib.Path(str(ASAR) + ".unpacked") / relative).read_text(encoding="utf-8") == text
+                           for relative, text in server_files().items())
+        return server_ready and is_unpacked() and all((OUT / n).read_text(encoding="utf-8") == t for n, t in files().items())
     except OSError:
         return False
 
@@ -170,6 +202,8 @@ def restore():
     shutil.copy2(BACKUP, ASAR)
     for name in ("index.html", "olympus.css", "olympus.js"):
         (OUT / name).unlink(missing_ok=True)
+    for relative in server_files():
+        (pathlib.Path(str(ASAR) + ".unpacked") / relative).unlink(missing_ok=True)
     print("restored the original server.asar")
 
 

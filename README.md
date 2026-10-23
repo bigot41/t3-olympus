@@ -14,7 +14,7 @@ Each profile is a T3 project with its own instructions, and opening a chat in it
 - **One god per profile.** Open a chat in Dev and T3 turns to Hephaestus; open one in Strategy and it turns to Athena. Pick a different god with **Ctrl+Alt+A** while you're in a profile and it becomes that profile's god from then on.
 - **Continue elsewhere.** Keeps the same Claude conversation running in the background with Remote Control, so you can pick it up in Claude desktop, claude.ai or the Claude phone app.
 - **Send to cloud.** Claude writes a handoff note from the chat, then starts a Claude Code cloud session with it.
-- **Profile cards.** Rest the mouse on a profile in the sidebar for a moment and a card shows what that profile works on, its folders and its latest chats. Haiku writes the summary, and only re-reads a profile when its chats change.
+- **Profile cards.** Rest the mouse on a profile in the sidebar for 1.75 seconds and a card shows its local description, folders and latest chats. Hovering never makes model requests; brief mouseovers don't even request a card from the helper.
 - **Dictation.** A microphone button that types what you say, using Claude Code's own speech-to-text.
 - **Compact button.** A button in the message box compacts the conversation whenever you want; automatic compaction still runs as usual.
 - **Split view.** Drag a chat onto the chat area to open it side by side.
@@ -34,7 +34,7 @@ Each profile is a T3 project with its own instructions, and opening a chat in it
 - Windows 10 or 11
 - [T3 Code](https://t3.codes) desktop app, installed for your user (the default)
 - Python 3.10 or newer, with `pythonw` (the python.org installer includes it)
-- For the hand-off buttons and profile cards: [Claude Code](https://code.claude.com) signed in (`claude` on your PATH) and Windows Terminal (`wt`)
+- For the hand-off buttons and optional AI card summaries: [Claude Code](https://code.claude.com) signed in (`claude` on your PATH); the hand-off buttons also need Windows Terminal (`wt`)
 
 ## Install
 
@@ -71,6 +71,32 @@ By hand:
 Name one profile `general` (or change `default_profile` in `config.json`): chats that match no rule go there.
 
 ## Configure
+
+### Background model usage
+
+Profile cards read a short work statement from the introduction of each profile's
+`CLAUDE.md`, falling back to the profile name if none is recognized. They don't display
+the instruction file or its workflow sections. Descriptions, folders, counts and recent
+titles update locally on each sustained hover. Missing caches, content changes, failures
+and elapsed time never trigger model requests. Existing AI summaries stay cached;
+the fresh local description takes precedence on the card.
+
+AI summaries are optional. A sustained hover only rebuilds the local card. Press
+**Refresh AI summary** on that card, or run `python cards_build.py <Profile> --refresh`,
+to request one Haiku summary for that profile. Plain `python cards_build.py` never does.
+Each AI prompt includes at most 20 unique, length-limited titles. Requests use Haiku at low
+effort with CLI settings requesting thinking disabled, a minimal system prompt, no tools, and safe mode
+to exclude personal instructions, skills, plugins, memory, and hooks. They request a $0.01
+CLI budget limit, which is not a subscription-percentage limit or an exact spending guarantee.
+Token counts and API-equivalent costs, without prompts, are recorded in
+`local/background-usage.jsonl`. A failed refresh keeps the previous summary and is not retried
+until you press the button again.
+
+New chat names use Claude's small title command: the message only, no coding instructions,
+memory, tools, or skills. If that command fails, the name is the first words of the message.
+That change loads the next time T3 is quit and opened again.
+
+### Profile rules
 
 `config.json` (created from `config.example.json`, never committed):
 
