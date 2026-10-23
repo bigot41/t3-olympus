@@ -1,7 +1,7 @@
 // Temporary chats (temporary.py does the files): a button next to New thread starts a chat in the
 // hidden "Temporary" project through T3's own project chooser. The chat is labelled while open,
-// hidden from the sidebar and the chooser, and deleted with T3's own delete command when you leave
-// it. Chats left behind by a crash or by closing T3 are deleted the next time T3 opens.
+// hidden from the sidebar and the chooser, and deleted with T3's own delete command when you explicitly
+// leave it. Chats left behind by a crash or by closing T3 are deleted the next time T3 opens.
 (() => {
   const { HELPER } = olympus;
   const TITLE = "Temporary";
@@ -85,19 +85,21 @@
     if (!fresh || picking) return;
     picking = true;
     document.documentElement.setAttribute("data-olympus-picking", "");
+    let selected = false;
     try {
       fresh.click();
       for (const end = performance.now() + 2000; performance.now() < end;) {
         await frame();
         const options = [...document.querySelectorAll('[role="option"]')];
         const option = options.find(match) || (fallback && options.find(fallback));
-        if (option) { option.removeAttribute("data-olympus-hidden"); option.click(); break; }
+        if (option) { option.removeAttribute("data-olympus-hidden"); option.click(); selected = true; break; }
       }
     } finally {
       picking = false;
       document.documentElement.removeAttribute("data-olympus-picking");
     }
     olympus.box()?.focus();
+    return selected;
   };
   // shared with olympus.js's New profile button ("Start a chat in it")
   olympus.pickProject = (title) => choose(isOption(title));
@@ -105,41 +107,89 @@
     fetch(HELPER + "/temporary").catch(() => {});  // makes sure the project exists; no need to wait
     return choose(isTemporaryOption).then(() => project() === TITLE || wait(300).then(() => choose(isTemporaryOption)));  // T3 still starting: once more
   };
-  const leave = () => {
+  const leave = async () => {
     let last = null;
     try { last = localStorage.getItem(LAST); } catch { /* none */ }
     const match = (o) => !isTemporaryOption(o) && last && lines(o).includes(last);
     // no remembered project: the first real one in the list (it shows its folder path)
-    return choose(match, (o) => !isTemporaryOption(o) && lines(o).some((l) => /[\\/]/.test(l)));
+    leaving = true;
+    try {
+      const selected = await choose(match, (o) => !isTemporaryOption(o) && lines(o).some((l) => /[\\/]/.test(l)));
+      if (selected) {
+        exiting = true;
+        const thread = current;
+        current = null;
+        route = null;
+        remember();
+        if (thread) remove(thread);
+      }
+    } finally { leaving = false; }
+    tick();
   };
 
-  let current = null;  // the temporary chat on screen, deleted when you leave it
+  // Navigation to Usage/settings is not an exit. Keep this window's temporary
+  // route so T3's default landing page cannot silently switch back to Projects.
+  const ACTIVE = window === top ? "olympus:temporary" : "olympus:temporary-pane";
+  let current = null;
+  let route = null;
+  let leaving = false;
+  let exiting = false;
+  try {
+    const active = JSON.parse(sessionStorage.getItem(ACTIVE) || "null");
+    if (active && typeof active.route === "string" && /^#\/[^/]+\/[^/]+$/.test(active.route)) {
+      current = active.thread || null;
+      route = active.route;
+    }
+  } catch { /* storage unavailable */ }
+  const remember = () => {
+    try {
+      if (route) sessionStorage.setItem(ACTIVE, JSON.stringify({ thread: current, route }));
+      else sessionStorage.removeItem(ACTIVE);
+    } catch { /* storage unavailable */ }
+  };
   let saved = null;  // the last project written to localStorage
   const tick = () => {
     const here = { thread: olympus.threadId() };
     const name = project();
-    const temporary = name === TITLE;
+    // The chooser click can precede React's breadcrumb/route update. Do not
+    // recapture the old temporary thread while an explicit exit is settling.
+    if (exiting) {
+      if (!name || name === TITLE) return;
+      exiting = false;
+    }
+    const host = document.querySelector(olympus.COMPOSER);
+    const auxiliary = /^#\/?(?:settings|usage|pull-requests)(?:[/?#]|$)/.test(location.hash);
+    if (route && !leaving && !picking && !auxiliary && host && location.hash !== route) {
+      // A draft becoming a saved temporary thread is the same conversation.
+      const ownThread = name === TITLE && here.thread && document.querySelector(
+        `li[data-thread-item$=":${CSS.escape(here.thread)}"] > [aria-label$=", ${TITLE}"]`);
+      if (!ownThread) { location.hash = route; return; }
+    }
+    const temporary = Boolean(route) || name === TITLE;
     document.documentElement.toggleAttribute("data-olympus-temporary", temporary);
     // remember the last real project, to go back to from a temporary chat
     if (name && !temporary && name !== "No project" && name !== saved) {
       saved = name;
       try { localStorage.setItem(LAST, name); } catch { /* not kept */ }
     }
-    if (current && here.thread !== current) { remove(current); current = null; }
-    // only a chat T3's own sidebar lists under Temporary (the project name can change a moment
-    // before the address does, so the name alone could point at the chat you just left)
-    if (temporary && here.thread && document.querySelector(
-      `li[data-thread-item$=":${CSS.escape(here.thread)}"] > [aria-label$=", ${TITLE}"]`)) current = here.thread;
+    // Only learn routes confirmed by T3's project/sidebar, never a settings route.
+    if (!leaving && !picking && name === TITLE && !auxiliary &&
+        ((!here.thread && /^#\/?draft\//.test(location.hash)) ||
+         (here.thread && document.querySelector(
+           `li[data-thread-item$=":${CSS.escape(here.thread)}"] > [aria-label$=", ${TITLE}"]`)))) {
+      current = here.thread;
+      route = location.hash;
+      remember();
+    }
 
     // the label above the composer
-    const host = document.querySelector(olympus.COMPOSER);
     let label = document.getElementById("olympus-temp-label");
     if (temporary && host) {
       if (!label) {
         label = document.createElement("div");
         label.id = "olympus-temp-label";
-        label.title = "Not saved to your chat history. Deleted when you leave this chat.";
-        label.innerHTML = `${ICON}<span><b>Temporary chat</b> · not saved, deleted when you leave</span>`;
+        label.title = "Not saved to your chat history. Deleted when you click Leave temporary chat.";
+        label.innerHTML = `${ICON}<span><b>Temporary chat</b> · not saved, kept until you exit</span>`;
       }
       olympusAbove(label);
     } else if (label) label.remove();
@@ -155,7 +205,7 @@
       b.id = "olympus-temp-button";
       b.type = "button";
       b.innerHTML = ICON;
-      b.onclick = (e) => { e.stopPropagation(); (project() === TITLE ? leave : start)(); };
+      b.onclick = (e) => { e.stopPropagation(); (route || project() === TITLE ? leave : start)(); };
       fresh.after(b);
     }
     // the same button takes you back out of a temporary chat
@@ -177,7 +227,7 @@
       // chats on screen are kept: the main chat and the split pane's (split.js keeps its route)
       let pane = null;
       try { pane = sessionStorage.getItem("olympus:split"); } catch { /* none */ }
-      const open = new Set([olympus.threadId(), pane && decodeURIComponent(pane.split("/").pop())]);
+      const open = new Set([current, olympus.threadId(), pane && decodeURIComponent(pane.split("/").pop())]);
       for (const t of threads) if (!open.has(t)) remove(t);
     } catch { /* helper not running */ }
   }, 3000);
