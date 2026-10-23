@@ -8,7 +8,7 @@
     "grid-cols-[minmax(0,9rem)_minmax(3rem,1fr)_auto]",
     "grid-cols-[11rem_minmax(0,1fr)_7rem]",
   ];
-  const SHARED = /^Claude\s*&\s*GPT\s*\(shared\)(?:\s*[\u00b7\u2022]\s*(?:Weekly|5-hour))?$/i;
+  const SHARED = /^Claude\s*&\s*GPT\s*\(shared\)/i;
   const GEMINI = /^Gemini(?=\s*(?:[\u00b7\u2022]|$))/;
   const style = document.createElement("style");
   style.id = "olympus-usage-style";
