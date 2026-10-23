@@ -1,4 +1,4 @@
-"""Set up T3 Olympus: the 18 god themes, your config files, the "T3 Olympus" shortcut,
+"""Set up T3 Olympus: the 30 god themes, your config files, the "T3 Olympus" shortcut,
 a Startup entry that runs the buttons helper when you sign in to Windows,
 and the next-step card in each profile.
 
