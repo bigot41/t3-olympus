@@ -9,7 +9,8 @@ as "unpacked" in that archive's header and writes a copy with one extra
 archive changes. A T3 update replaces server.asar, so re-run this afterwards.
 """
 import base64, json, pathlib, shutil, struct, sys
-from background_patch import lean_titles, sqlite_sidecars
+from background_patch import background_agents, lean_titles, sqlite_sidecars
+from codex_patch import reasoning_controls
 
 HERE = pathlib.Path(__file__).parent
 ART = HERE / "art"
@@ -140,7 +141,7 @@ def files():
     modes = json.dumps({g: m for g in GODS if (m := theme_mode(g))})
     js = ((HERE / "olympus.js").read_text(encoding="utf-8").replace("/*GODS*/ {}", gods).replace("/*MODES*/ {}", modes)
           + "".join("\n" + (HERE / f).read_text(encoding="utf-8") for f in
-                    ("cards.js", "turnlogic.js", "turnbox.js", "panel.js", "temporary.js", "split.js", "voice.js", "compact.js", "usage.js", "pets.js")))
+                    ("cards.js", "turnlogic.js", "turnbox.js", "panel.js", "temporary.js", "split.js", "voice.js", "compact.js", "usage.js", "pets.js", "picture.js", "background.js")))
     return {"index.html": html, "olympus.css": BASE + "".join(theme_css(g) for g in GODS), "olympus.js": js}
 
 
@@ -154,7 +155,7 @@ def server_files():
         start = int(entry["offset"])
         source = data[start:start + entry["size"]].decode("utf-8")
         if 'return fromRunner("ClaudeTextGeneration",' in source:
-            return {pathlib.Path(*parts, name): sqlite_sidecars(lean_titles(source))}
+            return {pathlib.Path(*parts, name): reasoning_controls(background_agents(sqlite_sidecars(lean_titles(source))))}
     raise ValueError("Unsupported T3 version: Claude title-generation module not found")
 
 

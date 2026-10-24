@@ -44,10 +44,35 @@
   };
   loop();
 
+  const configure = async () => {
+    try {
+      await olympus.post("/pets/settings", {});
+    } catch (err) {
+      olympus.toast(err instanceof TypeError ? "The T3 Olympus helper isn't running." : olympus.esc(err.message));
+    }
+  };
+  olympus.onDom(() => {
+    const workspace = document.querySelector('[data-thread-details-card] section[aria-label="Workspace"]');
+    if (!workspace || document.getElementById("olympus-pet-settings")) return;
+    const section = document.createElement("section");
+    section.id = "olympus-pet-settings";
+    section.className = "px-2 pt-1 pb-2.5 border-t border-border/65";
+    section.setAttribute("aria-label", "Desktop pets");
+    const button = document.createElement("button");
+    button.type = "button";
+    button.textContent = "Choose pets and sizes…";
+    button.title = "Desktop pets · Ctrl+Alt+Shift+P";
+    button.className = "w-full rounded-md px-2 py-1.5 text-left text-xs hover:bg-muted";
+    button.addEventListener("click", configure);
+    section.append(button);
+    workspace.after(section);
+  });
+
   // Ctrl+Alt+P turns the desktop pets off or on; the helper remembers it until you press it again
   addEventListener("keydown", async (e) => {
-    if (!e.ctrlKey || !e.altKey || e.shiftKey || e.code !== "KeyP") return;
+    if (!e.ctrlKey || !e.altKey || e.code !== "KeyP" || e.repeat) return;
     e.preventDefault();
+    if (e.shiftKey) { configure(); return; }
     try {
       const { on } = await olympus.post("/pets/toggle", {});
       olympus.toast(on ? "Desktop pets on." : "Desktop pets off. Press Ctrl+Alt+P to bring them back.");

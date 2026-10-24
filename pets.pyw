@@ -19,6 +19,7 @@ Right-click > Hide pets, or Ctrl+Alt+P in T3, turns them off until you press Ctr
 """
 import ctypes, datetime, json, math, os, pathlib, socket, sqlite3, subprocess, sys, threading, time
 import tkinter as tk
+from tkinter import ttk, messagebox
 from ctypes import wintypes
 from PIL import Image, ImageDraw
 
@@ -35,6 +36,7 @@ OPEN = LOCAL / "pets-open.json"    # a chat a pet asked T3 to open (pets.js pick
 SEEN = LOCAL / "pets-seen.json"    # the chat T3 shows now (written by the helper for pets.js)
 OFF = LOCAL / "pets-off"           # there while you've turned the pets off (the helper's PETS_OFF)
 PORT = 47834                       # held while a copy runs, so a second copy exits
+SETTINGS = LOCAL / "pets-settings.json"
 
 
 def _dpi_scale():
@@ -52,9 +54,9 @@ def _dpi_scale():
 def dpi_of(hwnd):
     """The scaling of the monitor a window is on (follows changes in Settings and monitor moves)."""
     try:
-        return ctypes.windll.user32.GetDpiForWindow(hwnd) / 96 or SCALE
+        return ctypes.windll.user32.GetDpiForWindow(hwnd) / 96 or SYSTEM_SCALE
     except Exception:
-        return SCALE
+        return SYSTEM_SCALE
 
 
 def set_scale(scale):
@@ -71,11 +73,155 @@ def set_scale(scale):
     H = LIFT_ROOM + SPRITE_H + round(26 * SCALE)
 
 
-set_scale(_dpi_scale())
+SYSTEM_SCALE = _dpi_scale()
+set_scale(SYSTEM_SCALE)
 ENDED = {"completed", "failed", "interrupted", "cancelled", "canceled"}
 WAIT_FOR_T3 = 90                   # seconds to wait for T3 to open before giving up
 
 user32, kernel32 = ctypes.windll.user32, ctypes.windll.kernel32
+user32.MonitorFromWindow.argtypes = [wintypes.HWND, wintypes.DWORD]
+user32.MonitorFromWindow.restype = wintypes.HANDLE
+user32.GetMonitorInfoW.argtypes = [wintypes.HANDLE, ctypes.c_void_p]
+user32.SetWindowPos.argtypes = [wintypes.HWND, wintypes.HWND, ctypes.c_int, ctypes.c_int,
+                              ctypes.c_int, ctypes.c_int, wintypes.UINT]
+user32.GetForegroundWindow.restype = wintypes.HWND
+user32.GetDpiForWindow.argtypes = [wintypes.HWND]
+
+
+class MONITORINFO(ctypes.Structure):
+    _fields_ = [("cbSize", wintypes.DWORD), ("rcMonitor", wintypes.RECT),
+                ("rcWork", wintypes.RECT), ("dwFlags", wintypes.DWORD)]
+
+
+def monitor_workarea(hwnd):
+    info = MONITORINFO()
+    info.cbSize = ctypes.sizeof(info)
+    monitor = user32.MonitorFromWindow(hwnd, 2)
+    if not user32.GetMonitorInfoW(monitor, ctypes.byref(info)):
+        raise ctypes.WinError()
+    area = info.rcWork
+    return (area.left, area.top, area.right, area.bottom)
+
+
+def pet_settings():
+    settings = read_json(SETTINGS, {})
+    if not isinstance(settings, dict):
+        settings = {}
+    selected = settings.get("selected")
+    sizes = settings.get("sizes", {})
+    return {"selected": selected if isinstance(selected, list) else None,
+            "size": valid_size(settings.get("size", 100)),
+            "sizes": {name: valid_size(size) for name, size in sizes.items()}
+            if isinstance(sizes, dict) else {}}
+
+
+def valid_size(value):
+    return max(50, min(150, value)) if type(value) in (int, float) and math.isfinite(value) else 100
+
+
+def place_on_monitor(place, area, index, cell=None):
+    left, top, right, bottom = area
+    cell_width, cell_height = cell or (W, H)
+    if (not isinstance(place, (list, tuple)) or len(place) != 2 or
+            not all(type(value) in (int, float) and math.isfinite(value) for value in place) or
+            not (left <= place[0] < right and top <= place[1] < bottom)):
+        columns = max(1, (right - left - 40) // (cell_width + 6))
+        column, row = index % columns, index // columns
+        place = (right - (column + 1) * (cell_width + 6) - 20,
+                 bottom - H - 16 - row * (cell_height + 6))
+    return (round(max(left, min(place[0], right - W))),
+            round(max(top, min(place[1], bottom - H))))
+
+
+def configure_pets():
+    pythonw = pathlib.Path(sys.executable).with_name("pythonw.exe")
+    subprocess.Popen([str(pythonw if pythonw.exists() else sys.executable), str(HERE / "pets.pyw"),
+                      "--settings"], cwd=HERE, close_fds=True)
+
+
+def settings_dialog():
+    root = tk.Tk()
+    root.title("Desktop pets")
+    root.minsize(440, 360)
+    settings = pet_settings()
+    content = ttk.Frame(root, padding=20)
+    content.pack(fill="both", expand=True)
+    ttk.Label(content, text="Your desktop companions", font=("Segoe UI", 15, "bold")).pack(anchor="w")
+    ttk.Label(content, text="Choose which profiles appear. Changes apply when you save.").pack(anchor="w", pady=(6, 14))
+    enabled = tk.BooleanVar(value=not OFF.exists())
+    ttk.Checkbutton(content, text="Show desktop pets", variable=enabled).pack(anchor="w")
+    size = tk.IntVar(value=round(settings["size"]))
+    size_label = ttk.Label(content, text=f"Default size: {size.get()}%")
+    size_label.pack(anchor="w", pady=(14, 0))
+    tk.Scale(content, from_=50, to=150, resolution=5, orient="horizontal", variable=size,
+             showvalue=False, highlightthickness=0,
+             command=lambda value: size_label.configure(text=f"Default size: {int(float(value))}%")).pack(fill="x")
+    frame = ttk.Frame(content)
+    frame.pack(fill="both", expand=True)
+    canvas = tk.Canvas(frame, height=240, highlightthickness=0)
+    scroll = ttk.Scrollbar(frame, orient="vertical", command=canvas.yview)
+    canvas.configure(yscrollcommand=scroll.set)
+    scroll.pack(side="right", fill="y")
+    canvas.pack(side="left", fill="both", expand=True)
+    rows = ttk.Frame(canvas)
+    ttk.Label(rows, text="Visible profiles").grid(row=0, column=0, sticky="w", pady=(10, 6))
+    ttk.Label(rows, text="Size override").grid(row=0, column=1, sticky="w", padx=(12, 0), pady=(10, 6))
+    window = canvas.create_window((0, 0), window=rows, anchor="nw")
+    rows.bind("<Configure>", lambda event: canvas.configure(scrollregion=canvas.bbox("all")))
+    canvas.bind("<Configure>", lambda event: canvas.itemconfigure(window, width=event.width))
+    choices, overrides = {}, {}
+    try:
+        available = profiles()
+    except sqlite3.Error as error:
+        messagebox.showerror("Desktop pets", f"Couldn't read T3's profiles. Try again.\n{error}", parent=root)
+        root.destroy()
+        return
+    for index, info in enumerate(available, start=1):
+        name = info["name"]
+        choices[name] = tk.BooleanVar(value=settings["selected"] is None or name in settings["selected"])
+        override = settings["sizes"].get(name)
+        overrides[name] = tk.StringVar(value=f"{override:g}%" if override is not None else "Default")
+        ttk.Checkbutton(rows, text=name, variable=choices[name]).grid(row=index, column=0, sticky="w", pady=4)
+        ttk.Combobox(rows, textvariable=overrides[name], values=("Default", "50%", "75%", "100%", "125%", "150%"),
+                     state="readonly", width=9).grid(row=index, column=1, padx=(12, 0))
+    rows.columnconfigure(0, weight=1)
+    actions = ttk.Frame(content)
+    actions.pack(fill="x", pady=(12, 0))
+    ttk.Button(actions, text="Select all", command=lambda: [value.set(True) for value in choices.values()]).pack(side="left")
+    ttk.Button(actions, text="Select none", command=lambda: [value.set(False) for value in choices.values()]).pack(side="left", padx=6)
+
+    def save():
+        selected = [name for name in settings["selected"] or [] if name not in choices]
+        selected.extend(name for name, value in choices.items() if value.get())
+        sizes = dict(settings["sizes"])
+        for name, value in overrides.items():
+            sizes.pop(name, None)
+            if value.get() != "Default":
+                sizes[name] = float(value.get().rstrip("%"))
+        try:
+            write_json(SETTINGS, {"selected": selected, "size": size.get(), "sizes": sizes})
+            if enabled.get():
+                OFF.unlink(missing_ok=True)
+                subprocess.Popen([sys.executable, str(HERE / "pets.pyw")], cwd=HERE, close_fds=True,
+                                 creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+            else:
+                OFF.touch()
+        except OSError as error:
+            messagebox.showerror("Desktop pets", str(error), parent=root)
+            return
+        root.destroy()
+
+    ttk.Button(actions, text="Save", command=save).pack(side="right")
+    ttk.Button(actions, text="Cancel", command=root.destroy).pack(side="right", padx=6)
+    root.bind("<Escape>", lambda event: root.destroy())
+    root.bind("<MouseWheel>", lambda event: canvas.yview_scroll(-int(event.delta / 120), "units"))
+    windows = t3_windows()
+    left, top, right, bottom = monitor_workarea(windows[0] if windows else None)
+    root.update_idletasks()
+    user32.SetWindowPos(int(root.wm_frame(), 16), 0,
+                        left + max(0, (right - left - root.winfo_width()) // 2),
+                        top + max(0, (bottom - top - root.winfo_height()) // 2), 0, 0, 0x15)
+    root.mainloop()
 
 
 def when(stamp):
@@ -533,14 +679,17 @@ class Layered:
 
 
 class Pet:
-    def __init__(self, app, info, place):
+    def __init__(self, app, info, place, scale):
         self.app, self.name = app, info["name"]
+        self.scale = scale
+        set_scale(scale)
         self.win = tk.Toplevel(app.root)
         self.win.overrideredirect(True)
-        self.win.geometry(f"{W}x{H}+{place[0]}+{place[1]}")
+        self.win.geometry(f"{W}x{H}")
         frame = tk.Frame(self.win, width=W, height=H, cursor="hand2")
         frame.pack()
         self.layer = Layered(self.win)
+        user32.SetWindowPos(self.layer.hwnd, 0, *place, 0, 0, 0x15)
         self.god, self.state, self.thread, self.title = None, None, None, ""
         self.bounce_until, self.hover, self.last = 0.0, False, None
         self.cache = {}  # (frame, lift, hover) -> premultiplied bytes
@@ -553,6 +702,7 @@ class Pet:
         self.update(info)
 
     def update(self, info):
+        set_scale(self.scale)
         if info["god"] != self.god:
             self.god = info["god"]
             self.frames = pet_frames(self.god)
@@ -571,6 +721,7 @@ class Pet:
         self.state, self.thread, self.title = info["state"], info["thread"], info["title"]
 
     def draw(self, now):
+        set_scale(self.scale)
         frames = self.frames.get(self.state) or self.frames["idle"]
         index = int(now * FPS) % len(frames)
         lift = 0
@@ -603,7 +754,7 @@ class Pet:
         if abs(dx) + abs(dy) > 4:
             self.moved = True
         if self.moved:
-            self.win.geometry(f"+{self.start[2] + dx}+{self.start[3] + dy}")
+            user32.SetWindowPos(self.layer.hwnd, 0, self.start[2] + dx, self.start[3] + dy, 0, 0, 0x15)
 
     def release(self, e):
         if self.moved:
@@ -617,6 +768,7 @@ class Pet:
                       command=lambda: open_t3(self.thread, self.name))
         m.add_command(label=f"New chat in {self.name}", command=lambda: open_t3(None, self.name))
         m.add_separator()
+        m.add_command(label="Choose pets and sizes…", command=configure_pets)
         m.add_command(label="Hide pets (Ctrl+Alt+P in T3 brings them back)", command=self.app.hide)
         m.tk_popup(e.x_root, e.y_root)
 
@@ -627,6 +779,9 @@ class App:
         self.root.withdraw()
         self.pets = {}
         self.places = read_json(PLACES, {})
+        if not isinstance(self.places, dict):
+            self.places = {}
+        self.area = None
         self.started = time.time()
         self.seen_t3 = False
         self.t3_up = True
@@ -644,10 +799,6 @@ class App:
                 self.t3_up = False
                 return
             time.sleep(1.5)
-
-    def default_place(self, i):
-        w, h = self.root.winfo_screenwidth(), self.root.winfo_screenheight()
-        return (w - (i + 1) * (W + 6) - 20, h - H - 60)
 
     def hide(self):
         """Turn the pets off, so the helper doesn't start them again until Ctrl+Alt+P."""
@@ -669,20 +820,35 @@ class App:
             found = None  # T3 is writing; try again next time
         for pet in self.pets.values():
             pet.layer.keep_on_top()
-        if self.pets:
-            scale = dpi_of(next(iter(self.pets.values())).layer.hwnd)
-            if abs(scale - SCALE) > 0.01:
-                set_scale(scale)
-                for pet in self.pets.values():
-                    pet.win.destroy()
-                self.pets.clear()
+        windows = t3_windows()
+        foreground = user32.GetForegroundWindow()
+        hwnd = foreground if foreground in windows else windows[0] if windows else None
+        area = monitor_workarea(hwnd) if hwnd else self.area or monitor_workarea(None)
+        if area != self.area:
+            self.save_places()
+            for pet in self.pets.values():
+                pet.win.destroy()
+            self.pets.clear()
+            self.area = area
+        settings = pet_settings()
         if found is not None:
+            found = [info for info in found if settings["selected"] is None or info["name"] in settings["selected"]]
+            dpi = dpi_of(hwnd)
+            set_scale(dpi * max((settings["sizes"].get(info["name"], settings["size"])
+                                for info in found), default=settings["size"]) / 100)
+            cell = (W, H)
             for i, info in enumerate(found):
+                name = info["name"]
+                scale = dpi * settings["sizes"].get(name, settings["size"]) / 100
+                if name in self.pets and abs(self.pets[name].scale - scale) > 0.01:
+                    self.save_places()
+                    self.pets.pop(name).win.destroy()
                 if info["name"] in self.pets:
                     self.pets[info["name"]].update(info)
                 else:
-                    place = self.places.get(info["name"]) or self.default_place(i)
-                    self.pets[info["name"]] = Pet(self, info, place)
+                    set_scale(scale)
+                    place = place_on_monitor(self.places.get(name), area, i, cell)
+                    self.pets[name] = Pet(self, info, place, scale)
             for name in set(self.pets) - {p["name"] for p in found}:
                 self.pets.pop(name).win.destroy()
         self.root.after(1000, self.poll)
@@ -695,6 +861,20 @@ class App:
 
 
 if __name__ == "__main__":
+    if "--settings" in sys.argv:
+        settings_lock = socket.socket()
+        try:
+            settings_lock.bind(("127.0.0.1", PORT + 1))
+        except OSError:
+            user32.FindWindowW.argtypes = [wintypes.LPCWSTR, wintypes.LPCWSTR]
+            user32.FindWindowW.restype = wintypes.HWND
+            hwnd = user32.FindWindowW(None, "Desktop pets")
+            if hwnd:
+                user32.ShowWindow(hwnd, 9)
+                user32.SetForegroundWindow(hwnd)
+            sys.exit(0)
+        settings_dialog()
+        sys.exit(0)
     if OFF.exists():
         sys.exit(0)  # turned off (Hide pets or Ctrl+Alt+P)
     lock = socket.socket()

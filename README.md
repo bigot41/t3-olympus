@@ -149,9 +149,23 @@ How it works and what it can't promise:
 - T3's delete only marks a chat deleted, so the next time the shortcut opens T3 (with T3 closed) the launcher removes every remaining row for deleted temporary chats from T3's database and compacts it. Chats left open when T3 closed or crashed are deleted the next time T3 opens.
 - While the chat is open it is on disk like any chat. T3's general trace logs may hold fragments. Anthropic receives the messages to answer them and keeps them under your account's data settings.
 
+## Codex reasoning controls
+
+For ChatGPT-connected Codex, **GPT-6.1 Sol** keeps its Reasoning selector even when it appears in ChatGPT's model list before the local Codex catalog. A version-checked server overlay supplies its documented **Low, Medium (default), High, Extra High, Max** choices only when native reasoning metadata is missing. Native controls take precedence when discovery catches up; no other models or service tiers are changed. Restart T3 through the Olympus shortcut to load the overlay; reloading the UI is not enough.
+
+## Background delegated agents
+
+While the main agent is waiting on T3-managed delegated agents, a small **↗ Continue in background** button appears above the message box. Click once to release those waits without stopping, restarting or unlinking the children. The main agent receives a request to finish its current reply so you can keep talking; child results still arrive in the same parent thread.
+
+This targets T3's `delegate_task` **wait mode**, not provider-native subagents or an arbitrary `t3_thread_wait` call. It does not interrupt the parent or guarantee that a model immediately obeys the hand-back instruction. No button is needed for a delegation already launched asynchronously. Use **Stop** only if you intend to stop work.
+
+The feature includes a version-checked server overlay. Restart the Olympus helper and T3 after installing it; a UI reload alone does not replace the running server.
+
 ## Desktop pets
 
-Each profile gets a pet: its god on a round medallion, in the bottom-right corner of the screen and above other windows. The pets read T3's own records, so they keep up while T3 is minimised or behind other windows.
+Each profile can have a pet: its god on a round medallion, above other windows. Pets spawn in the bottom-right of **the monitor T3 is on**, clear of the taskbar, and follow when T3 moves to another monitor. Saved positions on a different or disconnected monitor are ignored. The pets read T3's own records, so they keep up while T3 is minimised or behind other windows.
+
+Open **Choose pets and sizes…** in the Ctrl+Shift+B tray, right-click any pet, or press **Ctrl+Alt+Shift+P**. Tick just the profiles you want, set a default size from **50–150%**, and optionally override individual pets' sizes. Press **Save** to apply; your choices survive restarts. The chooser remains available even with every pet hidden. New profiles stay hidden after you've saved an explicit selection. Size is relative to your monitor's display scaling, so medallions remain crisp on high-DPI screens.
 
 | The pet shows | Meaning |
 |---|---|
@@ -194,6 +208,9 @@ python wrapup_mcp.py --register "C:/path/to/folder"
 | Ctrl+U | Usage and plan limits |
 | Ctrl+Alt+A | Pick a god for the current profile |
 | Ctrl+Alt+P | Turn the desktop pets off or on |
+| Ctrl+Alt+Shift+P | Choose visible pets and their sizes |
+
+On a picture or a DXF in the files pane, **Mark up** opens it in the browser pane. The pen there is the same one a PDF already uses, and the file is left as it is.
 
 ## How it works
 
@@ -208,7 +225,7 @@ T3 serves its interface from `resources/server.asar`. `patch.py` marks the inter
 | `install.py` | One-time setup: themes, config files, shortcuts, Startup entry; `--uninstall` |
 | `launch.pyw` | What the shortcut runs: re-patch if needed, sort chats, start the helper, open T3 |
 | `patch.py` | Adds T3 Olympus to T3, or `--restore` takes it out |
-| `olympus.js`, `cards.js`, `panel.js`, `temporary.js`, `split.js`, `voice.js`, `compact.js`, `usage.js`, `pets.js` | The code that runs inside T3 |
+| `olympus.js`, `cards.js`, `panel.js`, `temporary.js`, `split.js`, `voice.js`, `compact.js`, `usage.js`, `pets.js`, `background.js` | The code that runs inside T3 |
 | `olympus-hook.js`, `turnlogic.js`, `turnbox.js` | Task list and next-step box: T3's events, the rules, the drawing |
 | `pets.pyw` | The desktop pets: reads T3's database, draws the medallions, opens chats |
 | `voice.py` | Dictation: streams your microphone to Claude Code's speech-to-text service |

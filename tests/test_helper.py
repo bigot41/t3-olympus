@@ -165,3 +165,9 @@ class PetsToggle(unittest.TestCase):
         helper.pets_toggle()
         helper.ensure_pets()
         self.popen.assert_not_called()
+
+    def test_settings_open_even_when_pets_are_off(self):
+        helper.pets_toggle()
+        self.assertEqual(helper.pets_settings(), {"ok": True})
+        self.assertTrue(os.path.exists(helper.PETS_OFF))
+        self.assertEqual(self.popen.call_args.args[0][-1], "--settings")

@@ -15,7 +15,7 @@ config.json's buttons_show_in picks which T3 projects show the buttons ("all" or
 """
 import glob, json, os, re, socket, sqlite3, subprocess, sys, threading, time, urllib.parse
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-import cards_build, new_profile, temporary, voice
+import cards_build, new_profile, picture, temporary, voice
 from organize import CONFIG
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -40,6 +40,34 @@ def transcript(sid):
             return None
         transcripts[sid] = files[0]
     return transcripts[sid]
+
+
+def workspace_for(thread):
+    """The project folder of a T3 chat, or raise ValueError."""
+    con = sqlite3.connect(f"file:{DB}?mode=ro", uri=True)
+    try:
+        row = con.execute(
+            "select p.workspace_root from orchestration_v2_projection_threads t "
+            "join projection_projects p on p.project_id = t.project_id "
+            "where t.thread_id = ? and t.deleted_at is null and p.deleted_at is null",
+            (thread,)).fetchone()
+    finally:
+        con.close()
+    if not row or not row[0] or not os.path.isdir(row[0]):
+        raise ValueError("This chat has no project folder.")
+    return row[0]
+
+
+def open_picture(body):
+    """A browser-pane page for a picture or DXF in this chat's project. The file is not changed."""
+    thread = body.get("thread") if isinstance(body, dict) else None
+    raw = body.get("path") if isinstance(body, dict) else None
+    if not isinstance(thread, str) or not thread or not isinstance(raw, str):
+        raise ValueError("Choose a file in this project.")
+    kind, path = picture.locate(workspace_for(thread), raw)
+    drawing = picture.dxf_svg(path) if kind == "drawing" else None
+    token = picture.mint(kind, path, drawing)
+    return {"url": f"http://127.0.0.1:{PORT}/picture/{token}"}
 
 
 def session_for(thread):
@@ -338,6 +366,30 @@ def pets_toggle(_body=None):
     return {"on": False}
 
 
+def pets_settings(_body=None):
+    pythonw = os.path.join(os.path.dirname(sys.executable), "pythonw.exe")
+    subprocess.Popen([pythonw if os.path.exists(pythonw) else sys.executable,
+                      os.path.join(HERE, "pets.pyw"), "--settings"],
+                     cwd=HERE, close_fds=True, creationflags=NO_WINDOW)
+    return {"ok": True}
+
+
+def waiting_agents(thread):
+    con = sqlite3.connect(f"file:{DB}?mode=ro", uri=True)
+    try:
+        rows = con.execute(
+            "select s.payload_json from orchestration_v2_projection_subagents s "
+            "join orchestration_v2_projection_runs r on r.run_id = s.run_id and r.thread_id = s.thread_id "
+            "where s.thread_id = ? and s.origin = 'app_owned' "
+            "and s.status in ('pending', 'running', 'waiting') and r.status = 'running'", (thread,)).fetchall()
+    finally:
+        con.close()
+    tasks = [json.loads(row[0]) for row in rows]
+    return {"tasks": [{"id": task["id"]} for task in tasks
+                      if task.get("completionWake", "settled_only") == "settled_only"
+                      and task.get("childThreadId") and (task.get("completionDelivery") or {}).get("state") != "disposed"]}
+
+
 def pets_poll(query):
     """GET /pets/poll from pets.js: note the chat T3 shows (so a desktop pet's done badge clears),
     and hand over a chat a pet was clicked for (pets.pyw writes it), once."""
@@ -413,6 +465,43 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(data)
 
+    def send_body(self, code, data, content_type):
+        if isinstance(data, str):
+            data = data.encode()
+        self.send_response(code)
+        self.send_header("Content-Type", content_type)
+        self.send_header("Content-Length", str(len(data)))
+        self.send_header("Cache-Control", "no-store")
+        self.send_header("X-Content-Type-Options", "nosniff")
+        self.end_headers()
+        self.wfile.write(data)
+
+    def picture_get(self):
+        """The picture page. A preview navigation has no t3code origin, so the token is the check."""
+        parts = [p for p in urllib.parse.urlsplit(self.path).path.split("/") if p]
+        token = parts[1] if len(parts) >= 2 else ""
+        expired = "<!doctype html><meta charset=utf-8><p>That page expired. Press Mark up again.</p>"
+        if (parts[:1] != ["picture"] or len(parts) not in (2, 3) or (len(parts) == 3 and parts[2] != "file")
+                or not re.fullmatch(r"[A-Za-z0-9_-]{16,}", token)):
+            return self.send_body(404, "Not found.", "text/plain; charset=utf-8")
+        row = picture.page(token)
+        if not row:
+            return self.send_body(404, expired, "text/html; charset=utf-8")
+        kind, path, drawing = row
+        if len(parts) == 2:
+            return self.send_body(200, picture.html(token, kind, drawing), "text/html; charset=utf-8")
+        ext = os.path.splitext(path)[1].lower()
+        if kind != "image" or not os.path.isfile(path):
+            return self.send_body(404, expired, "text/html; charset=utf-8")
+        try:
+            with open(path, "rb") as f:
+                data = f.read(picture.MAX_BYTES + 1)
+        except OSError:
+            return self.send_body(404, expired, "text/html; charset=utf-8")
+        if len(data) > picture.MAX_BYTES:
+            return self.send_body(413, "That file is too large to open here.", "text/plain; charset=utf-8")
+        self.send_body(200, data, picture.MIME.get(ext, "application/octet-stream"))
+
     def do_OPTIONS(self):
         self.send_response(204 if self.allowed() else 403)
         if self.allowed():
@@ -423,6 +512,8 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
 
     def do_GET(self):
+        if urllib.parse.urlsplit(self.path).path.startswith("/picture/"):
+            return self.picture_get()
         if not self.allowed():
             return self.reply(403, {"error": "forbidden"})
         if self.path == "/config":
@@ -436,6 +527,11 @@ class Handler(BaseHTTPRequestHandler):
                                     "threads": temporary.threads()})
         if self.path.startswith("/session?thread="):
             return self.reply(200, session_info(urllib.parse.unquote(self.path.split("=", 1)[1])))
+        if self.path.startswith("/background?thread="):
+            try:
+                return self.reply(200, waiting_agents(urllib.parse.unquote(self.path.split("=", 1)[1])))
+            except (sqlite3.Error, ValueError, KeyError):
+                return self.reply(503, {"error": "Couldn't read delegated tasks. Try again."})
         if self.path.startswith("/turn?thread="):
             return self.reply(200, turn_state(urllib.parse.unquote(self.path.split("=", 1)[1])))
         if self.path.startswith("/pets/poll?"):
@@ -466,7 +562,8 @@ class Handler(BaseHTTPRequestHandler):
         action = {"/continue": lambda b: continue_elsewhere(str(b["thread"]), b.get("allow") is True),
                   "/cloud": lambda b: send_to_cloud(str(b["thread"])), "/gods": set_god,
                   "/temporary/leaving": temporary_leaving, "/temporary/purge": temporary_purge,
-                  "/profile": make_profile, "/pets/toggle": pets_toggle}.get(self.path)
+                  "/profile": make_profile, "/pets/toggle": pets_toggle, "/pets/settings": pets_settings,
+                  "/picture": open_picture}.get(self.path)
         if not action:
             return self.reply(404, {"error": "not found"})
         try:
@@ -482,7 +579,7 @@ def running():
 
 
 STAMP = os.path.join(HERE, "local", "helper.json")  # the running helper's code version
-CODE = ("helper.py", "voice.py", "temporary.py", "organize.py", "cards_build.py", "background_patch.py", "new_profile.py", "wrapup_mcp.py")
+CODE = ("helper.py", "voice.py", "temporary.py", "organize.py", "cards_build.py", "background_patch.py", "new_profile.py", "wrapup_mcp.py", "picture.py")
 
 
 if __name__ == "__main__":

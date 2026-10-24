@@ -3,6 +3,7 @@ import json, pathlib, sys
 
 MARKER = '"olympus-title-small-v1"'
 SQLITE_MARKER = '"olympus-sqlite-sidecar-v1"'
+AGENTS_MARKER = '"olympus-background-agents-v1"'
 REQUEST_ENV = {"CLAUDE_CODE_DISABLE_THINKING": "1", "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1",
                "CLAUDE_CODE_DISABLE_TERMINAL_TITLE": "1"}
 
@@ -65,3 +66,30 @@ def sqlite_sidecars(source):
         '!isReplaceableSqliteSidecar(input.entryName)) return yield* new CodexShadowHomeEntryConflictError({'
     )
     return source.replace(needle, replacement, 1)
+
+
+def background_agents(source):
+    if AGENTS_MARKER in source:
+        return source
+    replacements = {
+        'const OrchestratorMcpDelegateTaskResult = Struct({':
+            AGENTS_MARKER + ';\nconst OrchestratorMcpDelegateTaskResult = Struct({\n'
+            '\tbackgrounded: optional$9(Boolean$5),\n'
+            '\tbackgroundNotice: optional$9(String$7),',
+        'return result.hasPendingQuestion || result.pendingApproval !== null || isTerminalTaskStatus(result.status);':
+            'return result.backgrounded === true || result.hasPendingQuestion || result.pendingApproval !== null || isTerminalTaskStatus(result.status);',
+        '\t\t\ttaskId: task.id,\n\t\t\tchildThreadId: task.childThreadId,\n\t\t\tchildRunId: childRun?.id ?? null,':
+            '\t\t\tbackgrounded: task.completionWake === "always" && !isTerminalTaskStatus(status),\n'
+            '\t\t\ttaskId: task.id,\n\t\t\tchildThreadId: task.childThreadId,\n\t\t\tchildRunId: childRun?.id ?? null,',
+        'if (isSome(waited) && isTerminalTaskStatus(waited.value.status)) return waited.value;':
+            'if (isSome(waited) && waited.value.backgrounded === true) return { ...waited.value,\n'
+            '\t\t\t\tbackgroundNotice: "The user sent this child task to the background. It continues running and will notify this thread on completion. '
+            'Return control to the user by ending this parent reply now. Do not wait, poll, stop the child, or start a replacement task."\n'
+            '\t\t\t};\n'
+            '\t\t\tif (isSome(waited) && isTerminalTaskStatus(waited.value.status)) return waited.value;'
+    }
+    for original, replacement in replacements.items():
+        if source.count(original) != 1:
+            raise ValueError("Unsupported T3 version: background-agent wait anchor changed")
+        source = source.replace(original, replacement, 1)
+    return source
